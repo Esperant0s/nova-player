@@ -27,7 +27,7 @@ Nova.router.register('settings', function () {
       { icon: 'user', label: 'Account', value: who, sub: exp },
       { icon: 'refresh', label: 'Refresh library', value: 'Fetch the latest channels, movies and series', fn: function () {
         Nova.ui.toast('Refreshing library…');
-        Nova.api.refresh().then(function () { Nova.ui.toast('Library is up to date'); });
+        Nova.api.refresh().then(function (ok) { if (ok) Nova.ui.toast('Library is up to date'); });
       } },
       { icon: 'live', label: 'Live stream format', value: label('liveFormat', LIVE_FMT, 'auto'), sub: 'Try HLS if channels fail to start', fn: cycle('liveFormat', LIVE_FMT, 'auto') },
       { icon: 'subtitles', label: 'Subtitle size', value: label('subSize', SUB_SIZE, 'm'), fn: function () { cycle('subSize', SUB_SIZE, 'm')(); Nova.applySubSize(); } },

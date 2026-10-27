@@ -35,7 +35,7 @@ Nova.router.register('player', function (params) {
   var $ = function (s) { return el.querySelector(s); };
 
   var state = 'buffering', controls = false, zone = 'bar', btnIdx = 0, buttons = [];
-  var hideTimer = null, msgTimer = null, subTimer = null, statsTimer = null, zapTimer = null, numTimer = null, retryTimer = null;
+  var hideTimer = null, msgTimer = null, subTimer = null, statsTimer = null, zapTimer = null, numTimer = null, retryTimer = null, steadyTimer = null;
   var scrub = null, scrubTimer = null, scrubCount = 0, scrubLast = 0;
   var retries = 0, lastSave = 0, rate = 1, numBuf = '';
   var nextDismissed = false, nextShown = false, chList = null, chOpen = false, exiting = false;
@@ -77,7 +77,10 @@ Nova.router.register('player', function (params) {
 
   engine.on('state', function (s) {
     setState(s);
-    if (s === 'playing') retries = 0;
+    // AVPlay reports "playing" as soon as it starts, even on a stream that fails a moment later,
+    // so the reconnect count only resets once playback has kept going for a while.
+    clearTimeout(steadyTimer);
+    if (s === 'playing' && retries) steadyTimer = setTimeout(function () { retries = 0; }, 15000);
   });
   engine.on('time', function (t) {
     if (!live) {
@@ -99,6 +102,7 @@ Nova.router.register('player', function (params) {
 
   function onError(msg) {
     if (exiting) return;
+    clearTimeout(steadyTimer);
     if (retries < 3) {
       retries++;
       showMsg('Reconnecting… (' + retries + '/3)');
@@ -587,7 +591,7 @@ Nova.router.register('player', function (params) {
       exiting = true;
       saveProgress();
       engine.close();
-      [hideTimer, msgTimer, subTimer, zapTimer, numTimer, scrubTimer, retryTimer].forEach(clearTimeout);
+      [hideTimer, msgTimer, subTimer, zapTimer, numTimer, scrubTimer, retryTimer, steadyTimer].forEach(clearTimeout);
       clearInterval(clock);
       clearInterval(statsTimer);
       document.removeEventListener('visibilitychange', onVisibility);

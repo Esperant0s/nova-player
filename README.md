@@ -14,7 +14,7 @@ A Netflix-style IPTV player for Samsung smart TVs (Tizen). Supports Xtream Codes
 - **Live TV**:
   - A guide with categories and channels, showing now/next programme information.
   - In the player: instant zapping, type a channel number, jump back to the previous channel, a channel list overlay, and favourites.
-- **Search** with an on-screen keyboard. Results are instant because the search runs on the cached library.
+- **Search** with an on-screen keyboard in English or Arabic (the عربي / ABC key switches). Results are instant because the search runs on the cached library. It ignores capitals, accents, spaces and punctuation, so "spiderman" finds "Spider-Man", and treats Arabic spelling variants (أ إ آ ا, ة ه, ى ي) and diacritics as the same.
 - **Region and topic filters** on Movies, Series and Live TV: Arabic, Western, Turkish, Indian, Korean, Japanese, Chinese, Other Asian, Anime, European, Kids, Sports, News and Religious. Press Up from the first row, or click a chip. Each title belongs to exactly one filter. When it fits several, the most specific one wins: Anime before Japanese, Kids before Arabic, Korean before Western. A filtered view shows Recently Added, then each category's matching titles, then genre rows such as "Drama" and "Comedy".
 
   How titles get sorted ([js/regions.js](js/regions.js)):

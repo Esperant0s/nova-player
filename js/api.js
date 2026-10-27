@@ -286,7 +286,17 @@
 
   /* ---------------- Public API ---------------- */
 
-  var memo = {}, infoDone = {};
+  /* Search ignores case, accents, spaces and punctuation ("spiderman" finds "Spider-Man"), Arabic
+     diacritics and tatweel, and the Arabic spellings people use interchangeably (أ إ آ ا, ة ه, ى ي). */
+  function fold(s) {
+    s = String(s || '').toLowerCase();
+    if (s.normalize) s = s.normalize('NFD');
+    return s.replace(/[̀-ًͯ-ٰٟـ]/g, '')
+      .replace(/[آأإٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و')
+      .replace(/[\u0000-/:-@[-`{-¿ -⁯،؛؟]/g, '');
+  }
+
+  var memo = {}, infoDone = {}, folded = {};
 
   Nova.api = {
     account: null,
@@ -306,7 +316,12 @@
         var m = /^(https?:\/\/[^\/]+)\/get\.php\?(.*)$/i.exec(acc.url.trim());
         if (m) {
           var q = {};
-          m[2].split('&').forEach(function (p) { var kv = p.split('='); q[kv[0]] = decodeURIComponent(kv[1] || ''); });
+          // Passwords can contain "=" or a stray "%", so split on the first "=" only and keep undecodable values as typed.
+          m[2].split('&').forEach(function (p) {
+            var i = p.indexOf('='), v = i < 0 ? '' : p.slice(i + 1);
+            try { v = decodeURIComponent(v); } catch (e) {}
+            q[i < 0 ? p : p.slice(0, i)] = v;
+          });
           if (q.username && q.password) return { type: 'xtream', server: m[1], user: q.username, pass: q.password };
         }
       }
@@ -370,11 +385,13 @@
       });
     },
 
+    // Resolves true when the library was updated, false when it failed but the saved one is still in use.
     refresh: function () {
       var self = this;
-      return this.fetch().then(function () { Nova.bus.emit('library'); }, function (e) {
+      return this.fetch().then(function () { Nova.bus.emit('library'); return true; }, function (e) {
         Nova.ui && Nova.ui.toast('Could not refresh the library: ' + e.message);
         if (!self.lib) throw e;
+        return false;
       });
     },
 
@@ -400,6 +417,7 @@
       Nova.regions.tagAll(view);
       this.lib = view;
       this.byKey = byKey;
+      folded = {};
     },
 
     get: function (type, id) { return this.byKey[type + ':' + id] || null; },
@@ -436,11 +454,14 @@
     },
 
     search: function (q, type, limit) {
-      q = q.toLowerCase();
+      q = fold(q);
+      if (!q) return [];
       var starts = [], contains = [];
       var items = this.lib[type].items;
+      // Folded names are worked out once per library, on the first search.
+      var names = folded[type] || (folded[type] = items.map(function (it) { return fold(it.name); }));
       for (var i = 0; i < items.length && starts.length < limit; i++) {
-        var n = items[i].name.toLowerCase(), at = n.indexOf(q);
+        var n = names[i], at = n.indexOf(q);
         if (at === 0) starts.push(items[i]);
         else if (at > 0 && contains.length < limit) contains.push(items[i]);
       }

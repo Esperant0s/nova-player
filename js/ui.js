@@ -278,6 +278,56 @@ Nova.ui = {
     return m;
   },
 
+  /* A dialog with one text field above its buttons. Down or OK leaves the field.
+     opts: {title, text, label, value, placeholder, buttons: [{label, fn(value)}]} */
+  prompt: function (opts) {
+    var self = this;
+    var el = Nova.el('div', 'dialog-wrap');
+    var html = '<div class="dialog">';
+    if (opts.title) html += '<h2>' + Nova.esc(opts.title) + '</h2>';
+    if (opts.text) html += '<p>' + Nova.esc(opts.text) + '</p>';
+    html += '<label class="field dialog-field"><span>' + Nova.esc(opts.label || '') + '</span><input type="text" value="' + Nova.esc(opts.value || '') +
+      '" placeholder="' + Nova.esc(opts.placeholder || '') + '" autocomplete="off" spellcheck="false"></label><div class="dialog-btns">';
+    opts.buttons.forEach(function (b, i) { html += '<div class="btn" data-i="' + i + '">' + Nova.esc(b.label) + '</div>'; });
+    el.innerHTML = html + '</div></div>';
+    var field = el.querySelector('.field'), input = field.querySelector('input'), btns = el.querySelectorAll('.btn');
+    var idx = -1, editing = false;   // idx -1 is the field
+    function mark() {
+      field.classList.toggle('focused', idx < 0);
+      Array.prototype.forEach.call(btns, function (b, i) { b.classList.toggle('focused', i === idx); });
+    }
+    function stop() { if (editing) { editing = false; input.blur(); } }
+    input.addEventListener('focus', function () { editing = true; idx = -1; mark(); });
+    input.addEventListener('blur', function () { editing = false; });
+    var m = {
+      el: el,
+      close: function () { stop(); self.popModal(m); },
+      onKey: function (act) {
+        if (editing) {
+          if (act === 'ok' || act === 'down') { stop(); idx = 0; mark(); }
+          else if (act === 'back') stop();
+          return;
+        }
+        if (act === 'back') return m.close();
+        if (idx < 0) {
+          if (act === 'ok') input.focus();
+          else if (act === 'down') { idx = 0; mark(); }
+          return;
+        }
+        if (act === 'left') idx = Math.max(0, idx - 1);
+        else if (act === 'right') idx = Math.min(btns.length - 1, idx + 1);
+        else if (act === 'up') idx = -1;
+        else if (act === 'ok') { m.close(); var b = opts.buttons[idx]; if (b.fn) b.fn(input.value.trim()); return; }
+        mark();
+      }
+    };
+    Nova.onClick(el, '.btn', function (b) { idx = +b.getAttribute('data-i'); m.onKey('ok'); });
+    el.addEventListener('click', function (e) { if (e.target === el) m.close(); });
+    this.pushModal(m);
+    mark();
+    return m;
+  },
+
   /* Right-hand drawer with a vertical list, used by the player menus.
      items: [{label, sub, checked}] */
   panel: function (opts) {

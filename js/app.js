@@ -51,7 +51,7 @@ Nova.app = {
   start: function () {
     var splash = Nova.el('div', 'splash', '<div class="login-logo"><b>N</b>NOVA</div>' + Nova.ui.spinner() + '<p>Loading your library…</p>');
     document.getElementById('overlay').appendChild(splash);
-    Nova.regions.load().then(function () { return Nova.api.load(); }).then(function () {
+    Promise.all([Nova.regions.load(), Nova.artwork.load()]).then(function () { return Nova.api.load(); }).then(function () {
       splash.parentNode.removeChild(splash);
       Nova.router.root('browse', { section: 'home' });
     }, function (e) {

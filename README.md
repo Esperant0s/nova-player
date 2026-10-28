@@ -4,7 +4,14 @@ A Netflix-style IPTV player for Samsung smart TVs (Tizen). Supports Xtream Codes
 
 ## What's in it
 
-- **Netflix-style browsing**: the billboard at the top shows details for whatever is focused. Below it are rows for Continue Watching, My List, Recently Added and every category.
+- **Netflix-style browsing**: the billboard at the top shows details for whatever is focused. Below it are rows for Continue Watching, Top Picks for You, My List, Recently Added and every category.
+- **Background art from TMDB** ([js/artwork.js](js/artwork.js)): many providers send no wide backdrop for most movies, which leaves a small poster where the big picture should be. With a free TMDB API key in **Settings → Background art**, Nova fetches the full-size backdrop from TMDB instead. Movies are looked up by the TMDB id most Xtream providers include. Series and other titles are searched by name and year, and only an exact title match is used, so a sequel's picture never lands on the original. Each title is looked up once and remembered on the device. The TV loads the 1280-pixel-wide version (originals are often 4K and slow to decode); a computer loads the original. To get a key, sign up at themoviedb.org and open Settings → API. Either the API key or the Read Access Token works. To skip typing it on the TV, put it in `js/local-config.js` (not in git) as `Nova.localConfig = { tmdbKey: '…' };` and it is built into the app by `tv-update.sh`.
+- **Suggestions and ratings** ([js/recommend.js](js/recommend.js)):
+  - Each movie and series page has a 1–5 star rating at the end of its button row. Press Right past My List, or press 1–5 on the remote (0 removes the rating).
+  - Home gets **Top Picks for You** and up to two **Because You Watched / Liked …** rows. Movies and Series get Top Picks too, narrowed to the region filter when one is chosen.
+  - Suggestions match on category, region, genre, cast, director and decade. A title counts once you've watched about two minutes of it (or half of a short clip). Finished titles, loved ones and titles with many episodes watched count most. Recent ones count more than old ones, and My List counts a little. 1–2 star ratings push similar titles down. Watched and rated titles aren't suggested again.
+  - Movie lists from Xtream don't include genres, so movie suggestions mostly match on category and region until you open titles' pages.
+  - Everything stays on the TV. Settings has **Clear watch history** (also clears the history behind suggestions) and **Clear ratings**.
 - **Fast**: your library is cached on the TV, so the app opens instantly and refreshes in the background. Only the cards on screen are drawn, so a 50,000-title catalogue scrolls as smoothly as a small one.
 - **Player**:
   - Movies and series: left/right pauses and scrubs Netflix-style, with a preview of the frame at the chosen spot above the bar (hold to go faster: steps grow from 10 s to 30 s to 60 s). OK or Play plays from there, Back returns to where you were. The paused picture itself moves to the spot. In a browser, accounts that allow more than one connection (and the demo) also get a thumbnail. It needs a second connection to the stream, which would cut off the movie on one-connection accounts. The TV never shows thumbnails, because it has only one video decoder. Also ±10 s skip buttons, resume where you left off, a next-episode countdown with auto-play, and an "Ends at" time.
@@ -33,7 +40,7 @@ A Netflix-style IPTV player for Samsung smart TVs (Tizen). Supports Xtream Codes
 | Play/Pause | | Play/pause | |
 | FF / RW | | Jump 30 s | |
 | CH+ / CH− | Page through channels | | Change channel |
-| 0–9 | | | Go to channel number |
+| 0–9 | 1–5 rates a title, 0 removes it | | Go to channel number |
 | PRE-CH / Green | | | Previous channel |
 | Yellow | Add/remove My List | | Favourite |
 | Info | | Stream info | Info banner |
@@ -101,6 +108,8 @@ index.html           Page shell
 css/app.css          All styling (1920×1080)
 js/util.js           Helpers, icons, HTTP
 js/store.js          Settings, library cache (IndexedDB), watch progress, favourites
+js/recommend.js      Watch history, ratings and suggestions
+js/artwork.js        Background art from TMDB
 js/api.js            Xtream Codes, M3U and demo providers behind one interface
 js/keys.js           Remote and keyboard mapping
 js/ui.js             Screen router, side menu, dialogs, panels, cards

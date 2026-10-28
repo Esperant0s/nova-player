@@ -11,15 +11,21 @@ Nova.Billboard = function (root) {
   this.bd = new Nova.Backdrop(this.bg);
 };
 
-/* Picks the background art: a real backdrop when there is one, otherwise the uncropped poster
-   (or channel logo). Movies only get their backdrop from the info request, so until it arrives
-   the background stays empty instead of flashing a stretched poster. */
+/* Picks the background art: a real backdrop when there is one (the provider's, or one found on
+   TMDB earlier), otherwise the uncropped poster (or channel logo). Movies only get their backdrop
+   from the info request, so until it arrives the background stays empty instead of flashing a
+   stretched poster. Once info confirms the provider has none, TMDB is asked and its picture
+   replaces the poster when it arrives. */
 Nova.Billboard.art = function (bd, item, info) {
-  var backdrop = (info && info.backdrop) || item.backdrop;
+  var backdrop = (info && info.backdrop) || item.backdrop || Nova.artwork.now(item);
+  bd.item = item;
   if (backdrop) bd.show(backdrop, 'wide');
   else if (item.type === 'live') bd.show(item.img, 'logo');
   else if (info || item.type !== 'movie') bd.show(item.img || (info && info.poster), 'poster');
   else bd.clear();
+  if (!backdrop && info && item.type !== 'live') {
+    Nova.artwork.find(item, info).then(function (url) { if (url && bd.item === item) bd.show(url, 'wide'); });
+  }
 };
 
 Nova.Billboard.meta = function (item, info) {
@@ -99,10 +105,14 @@ Nova.router.register('browse', function (params) {
     var rows = [];
     if (section === 'home') {
       rows.push(Nova.continueRow());
+      rows.push({ title: 'Top Picks for You', shape: 'portrait', items: Nova.recommend.picks() });
+      var because = Nova.recommend.becauseRows(2);
       rows.push({ title: 'My List', shape: 'portrait', items: favItems('movie').concat(favItems('series')) });
       rows.push({ title: 'Favourite Channels', shape: 'landscape', items: favItems('live'), opts: liveOpts });
+      if (because[0]) rows.push(because[0]);
       rows.push({ title: 'Recently Added Movies', shape: 'portrait', items: api.recent('movie') });
       rows.push({ title: 'New in Series', shape: 'portrait', items: api.recent('series') });
+      if (because[1]) rows.push(because[1]);
       var mc = catRows('movie', 8), sc = catRows('series', 8);
       for (var i = 0; i < Math.max(mc.length, sc.length); i++) {
         if (mc[i]) { mc[i].title += ' · Movies'; rows.push(mc[i]); }
@@ -113,8 +123,10 @@ Nova.router.register('browse', function (params) {
       rows.push({ title: 'Series', shape: 'portrait', items: favItems('series') });
       rows.push({ title: 'Channels', shape: 'landscape', items: favItems('live'), opts: liveOpts });
     } else if (chips && chips.value !== 'all') {
-      rows = Nova.regions.rows(section, chips.value);
+      rows.push({ title: 'Top Picks · ' + Nova.regions.label(chips.value), shape: 'portrait', items: Nova.recommend.picks(section, chips.value) });
+      rows = rows.concat(Nova.regions.rows(section, chips.value));
     } else {
+      rows.push({ title: 'Top Picks for You', shape: 'portrait', items: Nova.recommend.picks(section) });
       rows.push({ title: 'Recently Added', shape: 'portrait', items: api.recent(section) });
       rows = rows.concat(catRows(section));
     }

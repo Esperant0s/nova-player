@@ -31,16 +31,43 @@ Nova.router.register('settings', function () {
       } },
       { icon: 'live', label: 'Live stream format', value: label('liveFormat', LIVE_FMT, 'auto'), sub: 'Try HLS if channels fail to start', fn: cycle('liveFormat', LIVE_FMT, 'auto') },
       { icon: 'subtitles', label: 'Subtitle size', value: label('subSize', SUB_SIZE, 'm'), fn: function () { cycle('subSize', SUB_SIZE, 'm')(); Nova.applySubSize(); } },
+      { icon: 'movie', label: 'Background art', value: Nova.artwork.enabled() ? 'TMDB' : 'Off',
+        sub: 'Wide pictures from TMDB for titles your provider has none for', fn: artworkKey },
       { icon: 'next', label: 'Auto-play next episode', value: label('autoNext', ON_OFF, true), fn: cycle('autoNext', ON_OFF, true) },
       { icon: 'trash', label: 'Clear watch history', value: 'Empties Continue Watching', fn: function () {
-        Nova.ui.dialog({ title: 'Clear watch history?', text: 'Continue Watching and resume points will be removed.', buttons: [
-          { label: 'Clear', fn: function () { Nova.progress.clear(); Nova.ui.toast('Watch history cleared'); } }, { label: 'Cancel' }] });
+        Nova.ui.dialog({ title: 'Clear watch history?', text: 'Continue Watching, resume points and the history behind your suggestions will be removed. Your ratings stay.', buttons: [
+          { label: 'Clear', fn: function () { Nova.progress.clear(); Nova.history.clear(); Nova.ui.toast('Watch history cleared'); } }, { label: 'Cancel' }] });
+      } },
+      { icon: 'star', label: 'Clear ratings', value: Nova.ratings.count() + ' rated', sub: 'Your star ratings shape Top Picks', fn: function () {
+        if (!Nova.ratings.count()) return Nova.ui.toast('You haven’t rated anything yet');
+        Nova.ui.dialog({ title: 'Clear all ratings?', text: 'Suggestions will be based on what you watch only.', buttons: [
+          { label: 'Clear', fn: function () { Nova.ratings.clear(); Nova.ui.toast('Ratings cleared'); } }, { label: 'Cancel' }] });
       } },
       { icon: 'logout', label: 'Sign out', value: 'Remove this account from the TV', fn: function () {
         Nova.ui.dialog({ title: 'Sign out?', text: 'Your favourites and watch history stay on this TV.', buttons: [
           { label: 'Sign out', fn: function () { Nova.api.logout().then(function () { Nova.router.root('login'); }); } }, { label: 'Cancel' }] });
       } }
     ];
+  }
+
+  function artworkKey() {
+    Nova.ui.prompt({
+      title: 'Background art from TMDB',
+      text: 'Create a free account at themoviedb.org, then copy the API key from Settings → API there. Either the short API key or the long Read Access Token works.',
+      label: 'TMDB API key', value: Nova.prefs.get('tmdbKey', ''), placeholder: 'Paste or type your key',
+      buttons: [
+        { label: 'Save', fn: function (k) {
+          if (!k) return;
+          Nova.ui.toast('Checking the key with TMDB…');
+          Nova.artwork.setKey(k).then(function (ok) {
+            Nova.ui.toast(ok ? 'Background art is on' : 'TMDB didn’t accept that key. Check it and try again.', ok ? 2500 : 5000);
+            render();
+          });
+        } },
+        { label: 'Turn off', fn: function () { Nova.artwork.setKey(''); Nova.ui.toast('Background art is off'); render(); } },
+        { label: 'Cancel' }
+      ]
+    });
   }
 
   var list = items();
@@ -50,7 +77,8 @@ Nova.router.register('settings', function () {
       return '<div class="set-item' + (i === idx ? ' focused' : '') + '">' + Nova.icon(it.icon) +
         '<div class="set-text"><b>' + Nova.esc(it.label) + '</b>' + (it.sub ? '<small>' + Nova.esc(it.sub) + '</small>' : '') + '</div>' +
         '<span class="set-val">' + Nova.esc(it.value) + '</span></div>';
-    }).join('') + '</div><p class="set-foot">Nova Player 1.0 · ' + (Nova.hasAVPlay() ? 'Samsung AVPlay engine' : 'Browser engine') + '</p>';
+    }).join('') + '</div><p class="set-foot">Nova Player 1.0 · ' + (Nova.hasAVPlay() ? 'Samsung AVPlay engine' : 'Browser engine') +
+      (Nova.artwork.enabled() ? '<br>This product uses the TMDB API but is not endorsed or certified by TMDB.' : '') + '</p>';
   }
   render();
   Nova.onClick(el, '.set-item', function (s) {

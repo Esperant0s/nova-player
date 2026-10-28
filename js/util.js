@@ -103,6 +103,7 @@ Nova.http = function (url, opts) {
   return new Promise(function (resolve, reject) {
     var x = new XMLHttpRequest();
     x.open('GET', target, true);
+    if (opts.headers) for (var h in opts.headers) x.setRequestHeader(h, opts.headers[h]);
     x.timeout = opts.timeout || 30000;
     x.onload = function () {
       if (x.status >= 200 && x.status < 300) {

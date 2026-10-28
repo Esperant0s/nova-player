@@ -534,6 +534,7 @@ Nova.router.register('player', function (params) {
     var pos = engine.time(), dur = engine.duration() || (ep && ep.duration) || 0;
     if (!dur || (pos < 5 && !ended)) return;
     var done = ended || pos / dur > 0.95;
+    Nova.history.saw(item, ep, pos, dur, done);
     if (!ep) {
       Nova.progress.set('resume:movie:' + item.id, done ? null : { type: 'movie', id: item.id, pos: pos, dur: dur, at: Date.now() });
       return;

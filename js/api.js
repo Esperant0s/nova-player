@@ -86,7 +86,7 @@
         plot: i.plot || i.description || '', cast: i.cast || i.actors || '', director: i.director || '', country: i.country || '',
         genre: i.genre || '', year: yearOf(i.releasedate || i.release_date) || item.year,
         duration: num(i.duration_secs) || 0, rating: num(i.rating) || item.rating,
-        backdrop: (bd && bd.length ? bd[0] : '') || '', poster: i.movie_image || ''
+        backdrop: (bd && bd.length ? bd[0] : '') || '', poster: i.movie_image || '', tmdb: String(i.tmdb_id || '')
       };
     });
   };
@@ -118,7 +118,7 @@
       return {
         plot: info.plot || item.plot || '', cast: info.cast || '', director: info.director || '', genre: info.genre || item.genre || '',
         year: yearOf(info.releaseDate || info.release_date) || item.year, rating: num(info.rating) || item.rating,
-        backdrop: (bd && bd.length ? bd[0] : '') || item.backdrop || '', seasons: seasons
+        backdrop: (bd && bd.length ? bd[0] : '') || item.backdrop || '', tmdb: String(info.tmdb || info.tmdb_id || ''), seasons: seasons
       };
     });
   };

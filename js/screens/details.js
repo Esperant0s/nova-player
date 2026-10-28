@@ -1,4 +1,4 @@
-/* Title page for a movie or series: backdrop, info, play/resume, My List, seasons and episodes. */
+/* Title page for a movie or series: backdrop, info, play/resume, My List, your rating, seasons and episodes. */
 
 Nova.router.register('details', function (params) {
   var item = params.item, isSeries = item.type === 'series';
@@ -13,7 +13,7 @@ Nova.router.register('details', function (params) {
   var art = new Nova.Backdrop(el.querySelector('.det-bg'));
   Nova.Billboard.art(art, item, Nova.api.infoNow(item));
 
-  var info = null, zone = 'btn', btnIdx = 0, seasonIdx = 0, buttons = [], epRows = null;
+  var info = null, zone = 'btn', btnIdx = 0, starIdx = 0, seasonIdx = 0, buttons = [], epRows = null;
 
   function epProgress(ep) { return Nova.progress.get('ep:' + ep.id); }
 
@@ -57,7 +57,8 @@ Nova.router.register('details', function (params) {
     box.innerHTML = buttons.map(function (b, i) {
       return '<div class="btn' + (i === 0 ? ' primary' : '') + '" data-i="' + i + '">' + Nova.icon(b.icon) + '<span>' + Nova.esc(b.label) + '</span>' +
         (b.progress ? '<i class="btn-prog"><b style="width:' + Math.round(b.progress * 100) + '%"></b></i>' : '') + '</div>';
-    }).join('');
+    }).join('') + '<div class="det-rate"><span class="rate-label"></span>' +
+      [1, 2, 3, 4, 5].map(function (n) { return '<i class="rate-star" data-s="' + n + '"></i>'; }).join('') + '</div>';
     btnIdx = Math.min(btnIdx, buttons.length - 1);
     mark();
   }
@@ -94,8 +95,31 @@ Nova.router.register('details', function (params) {
     mark();
   }
 
+  // Stars after the buttons. While focused they preview the rating OK would give.
+  function renderRating() {
+    var box = el.querySelector('.det-rate'), stars = Nova.ratings.get(item), on = zone === 'rate';
+    var shown = on ? starIdx + 1 : stars;
+    box.classList.toggle('focused', on);
+    box.querySelector('.rate-label').textContent = shown ? Nova.ratings.LABELS[shown] : 'Rate this';
+    Array.prototype.forEach.call(box.querySelectorAll('.rate-star'), function (s, i) {
+      s.innerHTML = Nova.icon(i < shown ? 'starFill' : 'star');
+      s.classList.toggle('on', i < shown);
+      s.classList.toggle('cur', on && i === starIdx);
+    });
+  }
+
+  function rate(n) {
+    var was = Nova.ratings.get(item);
+    if (n === was) n = 0;
+    Nova.ratings.set(item, n);
+    Nova.ui.toast(!n ? 'Rating removed' : n >= 4 ? Nova.ratings.LABELS[n] + ': you’ll see more like this'
+      : n <= 2 ? Nova.ratings.LABELS[n] + ': you’ll see fewer like this' : 'Rated: ' + Nova.ratings.LABELS[n]);
+    renderRating();
+  }
+
   function mark() {
     Array.prototype.forEach.call(el.querySelectorAll('.det-btns .btn'), function (b, i) { b.classList.toggle('focused', zone === 'btn' && i === btnIdx); });
+    renderRating();
     if (isSeries) {
       Array.prototype.forEach.call(el.querySelectorAll('.det-seasons .tab'), function (t, i) { t.classList.toggle('focused', zone === 'season' && i === seasonIdx); });
       if (epRows) { if (zone === 'eps') epRows.focusIn(); else epRows.blur(); }
@@ -104,6 +128,7 @@ Nova.router.register('details', function (params) {
   }
 
   Nova.onClick(el, '.det-btns .btn', function (b) { zone = 'btn'; btnIdx = +b.getAttribute('data-i'); mark(); buttons[btnIdx].fn(); });
+  Nova.onClick(el, '.det-rate .rate-star', function (s) { zone = 'rate'; starIdx = +s.getAttribute('data-s') - 1; mark(); rate(starIdx + 1); });
   Nova.onClick(el, '.det-seasons .tab', function (t) { zone = 'season'; seasonIdx = +t.getAttribute('data-i'); renderSeasons(); });
 
   renderButtons();
@@ -138,14 +163,25 @@ Nova.router.register('details', function (params) {
       renderButtons();
       if (isSeries && info && info.seasons.length) renderSeasons();
     },
-    onKey: function (act) {
+    onKey: function (act, e) {
       if (act === 'back') { Nova.router.back(); return; }
       if (act === 'yellow') { buttons[buttons.length - 1].fn(); return; }
+      // Number keys rate directly: 1 to 5 stars, 0 removes the rating.
+      if (act === 'digit' && e.digit <= 5) { rate(e.digit); return; }
+      var hasEps = isSeries && info && info.seasons.length;
       if (zone === 'btn') {
         if (act === 'left') btnIdx = Math.max(0, btnIdx - 1);
-        else if (act === 'right') btnIdx = Math.min(buttons.length - 1, btnIdx + 1);
-        else if (act === 'down' && isSeries && info && info.seasons.length) zone = 'season';
+        else if (act === 'right' && btnIdx < buttons.length - 1) btnIdx++;
+        else if (act === 'right') { zone = 'rate'; starIdx = Math.max(0, Nova.ratings.get(item) - 1); }
+        else if (act === 'down' && hasEps) zone = 'season';
         else if (act === 'ok' || act === 'play' || act === 'playpause') buttons[btnIdx].fn();
+        mark();
+      } else if (zone === 'rate') {
+        if (act === 'left' && starIdx > 0) starIdx--;
+        else if (act === 'left') zone = 'btn';
+        else if (act === 'right') starIdx = Math.min(4, starIdx + 1);
+        else if (act === 'down' && hasEps) zone = 'season';
+        else if (act === 'ok') { rate(starIdx + 1); return; }
         mark();
       } else if (zone === 'season') {
         if (act === 'left' && seasonIdx > 0) { seasonIdx--; renderSeasons(); }

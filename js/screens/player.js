@@ -517,6 +517,10 @@ Nova.router.register('player', function (params) {
       }
       var auto = Nova.prefs.get('autoNext', true);
       setText('.pn-count', auto ? 'Starts in ' + Math.ceil(left) + ' s · Back to dismiss' : 'Back to dismiss');
+    } else if (nextShown && left > threshold) {
+      // Rewound away from the end: the card goes, so OK pauses again instead of starting the next episode.
+      nextShown = false;
+      card.classList.remove('show');
     }
   }
 

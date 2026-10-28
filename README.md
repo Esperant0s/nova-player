@@ -7,7 +7,7 @@ A Netflix-style IPTV player for Samsung smart TVs (Tizen). Supports Xtream Codes
 - **Netflix-style browsing**: the billboard at the top shows details for whatever is focused. Below it are rows for Continue Watching, My List, Recently Added and every category.
 - **Fast**: your library is cached on the TV, so the app opens instantly and refreshes in the background. Only the cards on screen are drawn, so a 50,000-title catalogue scrolls as smoothly as a small one.
 - **Player**:
-  - Movies and series: hold left/right to scrub faster (steps grow from 10 s to 30 s to 60 s), ±10 s skip buttons, resume where you left off, a next-episode countdown with auto-play, and an "Ends at" time.
+  - Movies and series: left/right pauses and scrubs Netflix-style, with a preview of the frame at the chosen spot above the bar (hold to go faster: steps grow from 10 s to 30 s to 60 s). OK or Play plays from there, Back returns to where you were. The paused picture itself moves to the spot. In a browser, accounts that allow more than one connection (and the demo) also get a thumbnail. It needs a second connection to the stream, which would cut off the movie on one-connection accounts. The TV never shows thumbnails, because it has only one video decoder. Also ±10 s skip buttons, resume where you left off, a next-episode countdown with auto-play, and an "Ends at" time.
   - Menus for audio, subtitles, quality, speed and picture fit. Your audio and subtitle language choice is remembered.
   - Subtitles are drawn by the app, so their size can be changed in Settings.
   - Stream info overlay, plus automatic reconnect when a stream drops.
@@ -44,7 +44,7 @@ With a mouse:
 - **Everything is clickable:** posters, menus, buttons, channels and the search keyboard.
 - **Rows:** the scroll wheel moves between rows, and hovering a row shows arrows that page through it.
 - **Back:** the ← button at the top left, or your mouse's back button.
-- **Player:** moving the mouse shows the controls. Click the picture to pause, click the progress bar to jump, and double-click for full screen.
+- **Player:** moving the mouse shows the controls. Click the picture to pause, hover the progress bar to preview a frame, click it to jump, and double-click for full screen.
 
 ## Try it on your computer
 

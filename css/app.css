@@ -415,7 +415,7 @@ body:not(.playing) #video-layer { visibility: hidden; }
 .p-titles { flex: 1; min-width: 0; }
 .p-bar::before { content: ""; position: absolute; left: 0; right: 0; top: -14px; bottom: -14px; } /* easier to click */
 .p-next.show { pointer-events: auto; cursor: pointer; }
-.p-top, .p-bottom { position: absolute; left: 0; right: 0; opacity: 0; transition: opacity 0.3s, transform 0.3s var(--ease); }
+.p-top, .p-bottom { position: absolute; left: 0; right: 0; opacity: 0; transition: opacity 0.3s, transform 0.3s var(--ease); will-change: opacity, transform; }
 .p-top { top: 0; height: 280px; padding: 56px 100px 0; display: flex; justify-content: space-between; align-items: flex-start; background: linear-gradient(180deg, rgba(0,0,0,0.8), rgba(0,0,0,0)); transform: translateY(-20px); }
 .p-bottom { bottom: 0; padding: 180px 100px 56px; background: linear-gradient(0deg, rgba(0,0,0,0.88) 30%, rgba(0,0,0,0)); transform: translateY(20px); }
 .player.controls .p-top, .player.controls .p-bottom { opacity: 1; transform: none; }
@@ -425,16 +425,25 @@ body:not(.playing) #video-layer { visibility: hidden; }
 .p-sub { font-size: 24px; color: var(--muted); }
 .p-clock { font-size: 38px; font-weight: 700; }
 
-.p-bar { position: relative; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.25); margin-bottom: 20px; transition: height 0.15s; }
-.p-bar.focused { height: 12px; }
-.p-buf, .p-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.p-bar { position: relative; height: 12px; margin-bottom: 20px; }
+/* The track is drawn 8 px tall and grows to 12 px with a transform when focused, so it never re-lays out. */
+.p-track { position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.25); transform: scaleY(0.67); transition: transform 0.15s; }
+.p-bar.focused .p-track { transform: none; }
+.p-buf, .p-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: 0 0; transform: scaleX(0); will-change: transform; }
 .p-buf { background: rgba(255,255,255,0.3); }
 .p-fill { background: var(--accent); }
-.p-thumb { position: absolute; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; background: #fff; opacity: 0; transition: opacity 0.15s, transform 0.15s; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-.p-bar.focused .p-thumb { opacity: 1; }
-.scrubbing .p-thumb { transform: scale(1.3); }
-.p-tip { position: absolute; bottom: 44px; left: 50%; padding: 8px 18px; border-radius: 8px; background: rgba(0,0,0,0.88); font-size: 30px; font-weight: 800; white-space: nowrap; transform: translateX(-50%) scale(0.77); opacity: 0; transition: opacity 0.15s; }
-.scrubbing .p-tip { opacity: 1; }
+.p-thumb { position: absolute; left: 0; top: 50%; width: 0; height: 0; will-change: transform; }
+.p-thumb::after { content: ""; position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; background: #fff; opacity: 0; transition: opacity 0.15s, transform 0.15s; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+.p-bar.focused .p-thumb::after, .previewing .p-thumb::after { opacity: 1; }
+.scrubbing .p-thumb::after { transform: scale(1.3); }
+
+/* Seek preview: a frame from the chosen spot with its time, riding above the bar. */
+.p-preview { position: absolute; left: 0; bottom: 40px; width: 336px; display: flex; flex-direction: column; align-items: center; pointer-events: none; opacity: 0; transition: opacity 0.15s; will-change: transform; }
+.previewing .p-preview { opacity: 1; }
+.pv-img { display: none; width: 336px; margin-bottom: 14px; padding: 4px; border-radius: 10px; background: #fff; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+.pv-img canvas { display: block; width: 100%; border-radius: 6px; background: #000; }
+.p-preview.has-img .pv-img { display: block; }
+.p-tip { padding: 8px 18px; border-radius: 8px; background: rgba(0,0,0,0.88); font-size: 30px; font-weight: 800; white-space: nowrap; }
 .p-times { display: flex; justify-content: space-between; font-size: 24px; color: var(--muted); font-weight: 600; }
 
 .p-btns { display: flex; align-items: center; margin-top: 30px; height: 110px; }

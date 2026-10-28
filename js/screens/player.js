@@ -1,5 +1,5 @@
 /* The player.
-   Movies/episodes: accelerating scrub with preview, ±10 s skips, resume, audio/subtitle/quality/speed/aspect menus,
+   Movies/episodes: accelerating scrub with frame previews, ±10 s skips, resume, audio/subtitle/quality/speed/aspect menus,
    next-episode countdown and auto-play, remembered audio and subtitle languages, "ends at" time, stream stats.
    Live: instant zapping (up/down, CH+/-), number entry, previous channel, channel list overlay, now/next EPG banner,
    favourites. Both: automatic reconnect on stream errors. */
@@ -24,7 +24,8 @@ Nova.router.register('player', function (params) {
     '<div class="p-top"><div class="p-back">' + Nova.icon('arrowLeft') + '</div><div class="p-titles"><div class="p-kicker"></div><h2 class="p-title"></h2><div class="p-sub"></div></div><div class="p-clock"></div></div>' +
     '<div class="p-bottom">' +
       (live ? '<div class="p-banner"></div>' :
-        '<div class="p-bar"><i class="p-buf"></i><i class="p-fill"></i><i class="p-thumb"><span class="p-tip"></span></i></div>' +
+        '<div class="p-bar"><div class="p-track"><i class="p-buf"></i><i class="p-fill"></i></div><i class="p-thumb"></i>' +
+          '<div class="p-preview"><div class="pv-img"></div><span class="p-tip"></span></div></div>' +
         '<div class="p-times"><span class="p-elapsed"></span><span class="p-ends"></span><span class="p-remaining"></span></div>') +
       '<div class="p-btns"></div>' +
     '</div>' +
@@ -33,13 +34,22 @@ Nova.router.register('player', function (params) {
     '<div class="p-next"></div>' +
     '<div class="p-stats"></div>';
   var $ = function (s) { return el.querySelector(s); };
+  var bar = $('.p-bar'), fill = $('.p-fill'), buf = $('.p-buf'), thumb = $('.p-thumb'), pv = $('.p-preview'), pvImg = $('.pv-img');
 
   var state = 'buffering', controls = false, zone = 'bar', btnIdx = 0, buttons = [];
+  var tracks = { audio: [], text: [], quality: [], cur: {} };
   var hideTimer = null, msgTimer = null, subTimer = null, statsTimer = null, zapTimer = null, numTimer = null, retryTimer = null, steadyTimer = null;
-  var scrub = null, scrubTimer = null, scrubCount = 0, scrubLast = 0;
+  // scrub is the position being picked with left/right (null when not scrubbing).
+  var scrub = null, scrubFrom = 0, scrubResume = false, scrubFollowed = null, scrubTimer = null, followTimer = null, scrubCount = 0, scrubLast = 0;
   var retries = 0, lastSave = 0, rate = 1, numBuf = '';
   var nextDismissed = false, nextShown = false, chList = null, chOpen = false, exiting = false;
   var aspect = Nova.prefs.get('aspect', 'fit');
+  // Thumbnails need a second connection to the stream. On accounts allowed only one (most IPTV
+  // accounts), opening it cuts off the movie, so they get the TV's behaviour instead (see scrubBy).
+  // M3U playlists don't say, so they are treated as one-connection too.
+  var acc = Nova.api.account || {};
+  var canThumb = acc.type === 'demo' || +(acc.info && acc.info.maxConnections) > 1;
+  function thumbs() { return canThumb ? engine.preview() : null; }
 
   /* ---------- opening streams ---------- */
 
@@ -49,6 +59,7 @@ Nova.router.register('player', function (params) {
     nextShown = false;
     $('.p-next').classList.remove('show');
     setSub('');
+    tracks = { audio: [], text: [], quality: [], cur: {} };
     setState('buffering');
     engine.setAspect(aspect);
     engine.open(url, { live: live, startAt: startAt || 0 });
@@ -84,7 +95,7 @@ Nova.router.register('player', function (params) {
   });
   engine.on('time', function (t) {
     if (!live) {
-      if (!scrub) renderProgress();
+      if (scrub == null) renderProgress();
       if (Date.now() - lastSave > 10000) saveProgress();
       checkNext(t);
     }
@@ -98,7 +109,8 @@ Nova.router.register('player', function (params) {
   });
   engine.on('error', onError);
   engine.on('subtitle', function (text, dur) { setSub(text, dur); });
-  engine.on('tracks', function () { applyTrackPrefs(); buildButtons(); });
+  // Track lists are read once per change: on the TV each read is a slow call into the platform.
+  engine.on('tracks', function () { tracks = engine.tracks(); applyTrackPrefs(); buildButtons(); });
 
   function onError(msg) {
     if (exiting) return;
@@ -127,7 +139,7 @@ Nova.router.register('player', function (params) {
   function setState(s) {
     state = s;
     el.classList.toggle('buffering', s === 'buffering');
-    el.classList.toggle('paused', s === 'paused');
+    el.classList.toggle('paused', engine.isPaused());
     if (s === 'paused') showControls(true);
     else if (s === 'playing') { clearMsg(); scheduleHide(); }
     buildButtonsSoon();
@@ -135,11 +147,12 @@ Nova.router.register('player', function (params) {
 
   // Re-pick the audio and subtitle languages the viewer chose last time.
   function applyTrackPrefs() {
-    var t = engine.tracks(), want;
+    var t = tracks, want, changed = false;
     want = Nova.prefs.get('audioLang', '');
-    if (want && t.audio.length > 1) t.audio.forEach(function (a) { if (a.label === want && a.id !== t.cur.audio) engine.setAudio(a.id); });
+    if (want && t.audio.length > 1) t.audio.forEach(function (a) { if (a.label === want && a.id !== t.cur.audio) { engine.setAudio(a.id); changed = true; } });
     want = Nova.prefs.get('subLang', '');
-    if (want && t.text.length && t.cur.text < 0) t.text.forEach(function (s) { if (s.label === want) engine.setText(s.id); });
+    if (want && t.text.length && t.cur.text < 0) t.text.forEach(function (s) { if (s.label === want) { engine.setText(s.id); changed = true; } });
+    if (changed) tracks = engine.tracks();
   }
 
   /* ---------- subtitles, messages ---------- */
@@ -170,17 +183,20 @@ Nova.router.register('player', function (params) {
 
   /* ---------- controls ---------- */
 
+  // Only the first call draws; later ones (every scrub step, every mouse move) just keep them up.
   function showControls(stay) {
-    controls = true;
-    el.classList.add('controls');
-    if (live) renderBanner();
-    renderProgress();
-    tickClock();
-    buildButtons();
+    if (!controls) {
+      controls = true;
+      el.classList.add('controls');
+      if (live) renderBanner();
+      renderProgress();
+      tickClock();
+      buildButtons();
+    }
     if (stay) clearTimeout(hideTimer); else scheduleHide();
   }
   function hideControls() {
-    if (state === 'paused' && !live) return;
+    if (engine.isPaused() && !live) return;
     controls = false;
     el.classList.remove('controls');
     zone = live ? 'btns' : 'bar';
@@ -189,26 +205,67 @@ Nova.router.register('player', function (params) {
   function scheduleHide() {
     clearTimeout(hideTimer);
     if (!controls) return;
-    hideTimer = setTimeout(function () { if (!scrub && !Nova.ui.modals.length) hideControls(); }, live ? 4500 : 5000);
+    hideTimer = setTimeout(function () { if (scrub == null && !Nova.ui.modals.length) hideControls(); }, live ? 4500 : 5000);
   }
 
   function tickClock() {
     $('.p-clock').textContent = Nova.fmtClock();
   }
 
+  function duration() { return engine.duration() || (ep && ep.duration) || 0; }
+
+  // Text is only written when it changes, so a tick that moves nothing touches nothing.
+  var written = {};
+  function setText(sel, text) {
+    if (written[sel] === text) return;
+    written[sel] = text;
+    $(sel).textContent = text;
+  }
+
+  /* The bar moves with transforms only (no width/left), which the TV can animate without
+     re-laying out the page. It is skipped entirely while the controls are hidden. */
+  var barWidth = 0;
+  function barX(pct) { return Math.round(pct * (barWidth || (barWidth = bar.offsetWidth))); }
   function renderProgress() {
-    if (live) return;
-    var dur = engine.duration() || (ep && ep.duration) || 0;
+    if (live || !controls) return;
+    var dur = duration();
     var t = scrub != null ? scrub : engine.time();
     var pct = dur ? Nova.clamp(t / dur, 0, 1) : 0;
-    $('.p-fill').style.width = pct * 100 + '%';
-    $('.p-thumb').style.left = pct * 100 + '%';
-    $('.p-buf').style.width = (dur ? Nova.clamp(engine.buffered() / dur, 0, 1) * 100 : 0) + '%';
-    $('.p-tip').textContent = Nova.fmtTime(t);
-    $('.p-elapsed').textContent = Nova.fmtTime(t);
-    $('.p-remaining').textContent = dur ? '-' + Nova.fmtTime(dur - t) : '';
-    $('.p-ends').textContent = dur ? 'Ends at ' + Nova.fmtClock(new Date(Date.now() + (dur - t) * 1000 / rate)) : '';
+    fill.style.transform = 'scaleX(' + pct + ')';
+    thumb.style.transform = 'translateX(' + barX(pct) + 'px)';
+    buf.style.transform = 'scaleX(' + (dur ? Nova.clamp(engine.buffered() / dur, 0, 1) : 0) + ')';
+    setText('.p-elapsed', Nova.fmtTime(t));
+    setText('.p-remaining', dur ? '-' + Nova.fmtTime(dur - t) : '');
+    setText('.p-ends', dur ? 'Ends at ' + Nova.fmtClock(new Date(Date.now() + (dur - t) * 1000 / rate)) : '');
     el.classList.toggle('scrubbing', scrub != null);
+  }
+
+  /* The frame preview above the bar while scrubbing (or hovering it with the mouse). In a browser
+     the engine grabs real frames; on the TV (one decoder) and on one-connection accounts, the box
+     shows the time and the picture itself follows the scrub instead (see scrubBy). */
+  var PV_HALF = 168, PV_EDGE = 60;
+  function previewAt(t) {
+    var dur = duration();
+    if (!dur) return;
+    var w = barWidth || (barWidth = bar.offsetWidth);
+    var x = Nova.clamp(barX(t / dur), PV_HALF - PV_EDGE, w - PV_HALF + PV_EDGE);
+    pv.style.transform = 'translateX(' + (x - PV_HALF) + 'px)';
+    setText('.p-tip', Nova.fmtTime(t));
+    el.classList.add('previewing');
+    var th = thumbs();
+    if (!th) return;
+    th.get(t, function (canvas) {
+      if (!el.classList.contains('previewing')) return;
+      if (pvImg.firstChild !== canvas) { pvImg.textContent = ''; pvImg.appendChild(canvas); }
+      pv.classList.add('has-img');
+    });
+  }
+  function hidePreview() {
+    var th = thumbs();
+    if (th) th.release();
+    el.classList.remove('previewing');
+    pv.classList.remove('has-img');
+    pvImg.textContent = '';
   }
 
   function renderBanner() {
@@ -229,12 +286,12 @@ Nova.router.register('player', function (params) {
   }
 
   function buildButtons() {
-    var t = engine.tracks(), b = [];
+    var t = tracks, b = [], paused = engine.isPaused();
     if (live) {
       b.push({ icon: 'list', label: 'Channels', fn: openChannelList });
     } else {
       b.push({ icon: 'back10', label: 'Back 10 s', fn: function () { skip(-10); } });
-      b.push({ icon: state === 'paused' ? 'play' : 'pause', label: state === 'paused' ? 'Play' : 'Pause', fn: togglePlay, main: true });
+      b.push({ icon: paused ? 'play' : 'pause', label: paused ? 'Play' : 'Pause', fn: togglePlay, main: true });
       b.push({ icon: 'fwd10', label: 'Forward 10 s', fn: function () { skip(10); } });
       b.push({ spacer: true });
     }
@@ -285,6 +342,7 @@ Nova.router.register('player', function (params) {
           if (i === 0) { engine.setText(-1); Nova.prefs.set('subLang', ''); }
           else { engine.setText(items[i - 1].id); Nova.prefs.set('subLang', items[i - 1].label); }
         } else engine.setQuality(i === 0 ? -1 : items[i - 1].id);
+        tracks = engine.tracks();
         buildButtons();
       },
       onClose: scheduleHide
@@ -356,13 +414,17 @@ Nova.router.register('player', function (params) {
 
   /* ---------- VOD actions ---------- */
 
+  // Play/pause follows what the viewer asked for, not the buffering state: a paused video that is
+  // loading after a seek is still paused, and OK must play it.
   function togglePlay() {
-    if (state === 'paused') { engine.play(); flash('play'); scheduleHide(); }
+    if (engine.isPaused()) { engine.play(); flash('play'); scheduleHide(); }
     else { engine.pause(); flash('pause'); saveProgress(); }
+    el.classList.toggle('paused', engine.isPaused());
     buildButtons();
   }
 
   function skip(sec) {
+    commitScrub();
     var dur = engine.duration();
     var t = Nova.clamp(engine.time() + sec, 0, dur ? dur - 1 : 1e9);
     engine.seek(t);
@@ -371,36 +433,60 @@ Nova.router.register('player', function (params) {
     scheduleHide();
   }
 
-  // Holding left/right speeds up: 10 s steps, then 30 s, then 60 s.
+  /* Scrubbing, Netflix-style: the first left/right pauses the picture and shows a frame preview;
+     each press moves the preview (holding speeds up: 10 s steps, then 30 s, then 60 s). OK or Play
+     plays from there, Back returns to where you were, and stopping for a moment also plays from
+     there. Any other key settles on the chosen spot before doing its own thing. */
   function scrubBy(dir, big) {
-    var dur = engine.duration();
+    var dur = duration();
     if (!dur) return;
     var now = Date.now();
     scrubCount = now - scrubLast < 450 ? scrubCount + 1 : 0;
     scrubLast = now;
     var step = big ? 30 : scrubCount < 5 ? 10 : scrubCount < 15 ? 30 : 60;
-    if (scrub == null) scrub = engine.time();
+    if (scrub == null) {
+      scrub = scrubFrom = engine.time();
+      scrubFollowed = null;
+      scrubResume = !engine.isPaused();
+      if (scrubResume) engine.pause();
+    }
     scrub = Nova.clamp(scrub + dir * step, 0, dur - 1);
-    showControls();
+    showControls(true);
     zone = 'bar';
     markButtons();
     renderProgress();
+    previewAt(scrub);
+    // Without frame previews, the paused picture itself moves to the spot once the presses pause.
+    clearTimeout(followTimer);
+    if (!thumbs()) followTimer = setTimeout(function () { if (scrub != null) engine.seek(scrubFollowed = scrub); }, 300);
     clearTimeout(scrubTimer);
-    scrubTimer = setTimeout(commitScrub, 900);
+    scrubTimer = setTimeout(function () { commitScrub(); }, 1600);
   }
-  function commitScrub() {
+  function endScrub() {
     clearTimeout(scrubTimer);
-    if (scrub == null) return;
-    engine.seek(scrub);
+    clearTimeout(followTimer);
     scrub = null;
-    if (state === 'paused') engine.play();
+    hidePreview();
     renderProgress();
     scheduleHide();
   }
+  // then: 'play', 'pause', or nothing to go back to whatever was happening before the scrub.
+  function commitScrub(then) {
+    if (scrub == null) return;
+    var to = scrub, play = then ? then === 'play' : scrubResume;
+    if (to !== scrubFollowed && to !== scrubFrom) engine.seek(to);
+    endScrub();
+    if (play) engine.play();
+    el.classList.toggle('paused', engine.isPaused());
+    buildButtons();
+  }
   function cancelScrub() {
-    clearTimeout(scrubTimer);
-    scrub = null;
-    renderProgress();
+    if (scrub == null) return;
+    if (scrubFollowed != null) engine.seek(scrubFrom);
+    var resume = scrubResume;
+    endScrub();
+    if (resume) engine.play();
+    buildButtons();
   }
 
   function currentEpisodeRef() {
@@ -421,6 +507,7 @@ Nova.router.register('player', function (params) {
     var card = $('.p-next');
     if (left <= threshold && left > 0) {
       if (!nextShown) {
+        written['.pn-count'] = null;
         nextShown = true;
         card.innerHTML = '<div class="pn-thumb"></div><div class="pn-text"><small>Next episode</small><b>S' + next.season + ':E' + next.num + '  ' + Nova.esc(Nova.epTitle(item, next)) + '</b>' +
           '<div class="pn-btns"><span class="btn primary focused">' + Nova.icon('play') + 'Play now</span><span class="pn-count"></span></div></div>';
@@ -429,7 +516,7 @@ Nova.router.register('player', function (params) {
         card.classList.add('show');
       }
       var auto = Nova.prefs.get('autoNext', true);
-      card.querySelector('.pn-count').textContent = auto ? 'Starts in ' + Math.ceil(left) + ' s · Back to dismiss' : 'Back to dismiss';
+      setText('.pn-count', auto ? 'Starts in ' + Math.ceil(left) + ' s · Back to dismiss' : 'Back to dismiss');
     }
   }
 
@@ -540,18 +627,16 @@ Nova.router.register('player', function (params) {
       zone = 'btns';
       btnIdx = +btn.getAttribute('data-i');
       markButtons();
+      commitScrub();
       buttons[btnIdx].fn();
       scheduleHide();
       return;
     }
     if (t.closest('.p-back')) return exit();
-    var bar = t.closest('.p-bar');
-    if (bar) {
-      var dur = engine.duration();
-      if (!dur) return;
-      var r = bar.getBoundingClientRect();
-      cancelScrub();
-      engine.seek(Nova.clamp((e.clientX - r.left) / r.width, 0, 1) * dur);
+    if (t.closest('.p-bar')) {
+      var to = barTime(e);
+      if (to == null) return;
+      if (scrub != null) { scrub = to; commitScrub(); } else engine.seek(to);
       zone = 'bar';
       markButtons();
       renderProgress();
@@ -563,8 +648,20 @@ Nova.router.register('player', function (params) {
     // Anything else is the picture itself.
     if (chOpen) return closeChannelList();
     if (live) { if (controls) hideControls(); else showControls(); }
-    else { togglePlay(); showControls(state === 'paused'); }
+    else if (scrub != null) commitScrub('play');
+    else { togglePlay(); showControls(engine.isPaused()); }
   });
+  function barTime(e) {
+    var dur = duration();
+    if (!dur) return null;
+    var r = bar.getBoundingClientRect();
+    return Nova.clamp((e.clientX - r.left) / r.width, 0, 1) * dur;
+  }
+  // Hovering the bar previews that spot, like scrubbing with the remote.
+  if (!live) {
+    bar.addEventListener('mousemove', function (e) { var t = barTime(e); if (scrub == null && t != null) previewAt(t); });
+    bar.addEventListener('mouseleave', function () { if (scrub == null) hidePreview(); });
+  }
   // Double-click toggles browser full screen, like other web video players.
   el.addEventListener('dblclick', function (e) {
     if (e.target.closest('.p-bottom, .p-top, .p-chlist, .p-next')) return;
@@ -591,7 +688,7 @@ Nova.router.register('player', function (params) {
       exiting = true;
       saveProgress();
       engine.close();
-      [hideTimer, msgTimer, subTimer, zapTimer, numTimer, scrubTimer, retryTimer, steadyTimer].forEach(clearTimeout);
+      [hideTimer, msgTimer, subTimer, zapTimer, numTimer, scrubTimer, followTimer, retryTimer, steadyTimer].forEach(clearTimeout);
       clearInterval(clock);
       clearInterval(statsTimer);
       document.removeEventListener('visibilitychange', onVisibility);
@@ -637,9 +734,19 @@ Nova.router.register('player', function (params) {
         if (act === 'back') { nextDismissed = true; $('.p-next').classList.remove('show'); return; }
       }
 
-      if (act === 'play') { if (state === 'paused') togglePlay(); return; }
-      if (act === 'pause') { if (state !== 'paused') togglePlay(); showControls(true); return; }
-      if (act === 'playpause') { togglePlay(); showControls(state === 'paused'); return; }
+      if (scrub != null) {
+        if (act === 'left' || act === 'right') return scrubBy(act === 'right' ? 1 : -1);
+        if (act === 'ff' || act === 'rw') return scrubBy(act === 'ff' ? 1 : -1, true);
+        if (act === 'back') return cancelScrub();
+        if (act === 'ok' || act === 'play' || act === 'playpause') return commitScrub('play');
+        if (act === 'pause') return commitScrub('pause');
+        if (act === 'info') return toggleStats();
+        commitScrub();
+      }
+
+      if (act === 'play') { if (engine.isPaused()) togglePlay(); showControls(); return; }
+      if (act === 'pause') { if (!engine.isPaused()) togglePlay(); showControls(true); return; }
+      if (act === 'playpause') { togglePlay(); showControls(engine.isPaused()); return; }
       if (act === 'ff' || act === 'rw') return scrubBy(act === 'ff' ? 1 : -1, true);
       if (act === 'info') return toggleStats();
 
@@ -653,16 +760,17 @@ Nova.router.register('player', function (params) {
 
       if (zone === 'bar') {
         if (act === 'left' || act === 'right') return scrubBy(act === 'right' ? 1 : -1);
-        if (act === 'ok') { if (scrub != null) commitScrub(); else togglePlay(); return; }
+        if (act === 'ok') { togglePlay(); return; }
         if (act === 'down') { zone = 'btns'; btnIdx = 1; }
-        else if (act === 'up') { if (scrub == null) { hideControls(); return; } }
-        else if (act === 'back') { if (scrub != null) cancelScrub(); else if (state === 'paused') exit(); else hideControls(); return; }
+        else if (act === 'up') { hideControls(); return; }
+        else if (act === 'back') { if (engine.isPaused()) exit(); else hideControls(); return; }
       } else {
         if (act === 'left') btnIdx = Math.max(0, btnIdx - 1);
         else if (act === 'right') btnIdx = Math.min(buttons.length - 1, btnIdx + 1);
         else if (act === 'up') zone = 'bar';
         else if (act === 'ok') { buttons[btnIdx].fn(); }
-        else if (act === 'back') { if (state === 'paused') exit(); else hideControls(); return; }
+        // While paused the controls can't hide, so Back steps up to the bar before it exits.
+        else if (act === 'back') { if (engine.isPaused()) zone = 'bar'; else { hideControls(); return; } }
       }
       markButtons();
       scheduleHide();

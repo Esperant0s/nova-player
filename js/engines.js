@@ -1,7 +1,8 @@
 /* Playback engines behind one interface (times in seconds):
-     open(url, {live, startAt}), play(), pause(), seek(sec), time(), duration(), buffered()
+     open(url, {live, startAt}), play(), pause(), isPaused(), seek(sec), time(), duration(), buffered()
      tracks() -> {audio, text, quality: [{id, label}], cur: {audio, text, quality}}
      setAudio(id), setText(id|-1), setQuality(id|-1), rates(), setRate(r), aspects(), setAspect(id), info(), close()
+     preview() -> frame grabber for seek thumbnails, or null when the engine can't make them
    Events through engine.on(name, fn): state ('buffering'|'playing'|'paused'), time, ended, error, subtitle, tracks.
 
    AVEngine drives Samsung's hardware player (webapis.avplay) on the TV.
@@ -60,15 +61,25 @@
     var self = this, av = this.av, tk = ++this.token;
     this.close(true);
     this.cur = opts.startAt || 0;
+    this.dur = 0;
     this.textOn = false;
+    this.paused = false;
+    this.started = false;
+    this.buffering = true;
     try {
       av.open(url);
       av.setDisplayRect(0, 0, 1920, 1080);
       this.setAspect(this.aspect);
       av.setListener({
-        onbufferingstart: function () { if (tk === self.token) self.emit('state', 'buffering'); },
-        onbufferingcomplete: function () { if (tk === self.token) self.emit('state', self.paused ? 'paused' : 'playing'); },
-        oncurrentplaytime: function (ms) { if (tk === self.token) { self.cur = ms / 1000; self.emit('time', self.cur); } },
+        onbufferingstart: function () { if (tk === self.token) { self.buffering = true; self.emit('state', 'buffering'); } },
+        onbufferingcomplete: function () {
+          if (tk !== self.token) return;
+          self.buffering = false;
+          self.sync();
+          self.emit('state', self.paused ? 'paused' : 'playing');
+        },
+        // While a seek runs, AVPlay still reports the old position; showing it makes the bar jump back.
+        oncurrentplaytime: function (ms) { if (tk === self.token && !self.seeking) { self.cur = ms / 1000; self.emit('time', self.cur); } },
         onstreamcompleted: function () { if (tk === self.token) self.emit('ended'); },
         onerror: function (e) { if (tk === self.token) self.emit('error', String(e)); },
         onsubtitlechange: function (duration, text) { if (tk === self.token && self.textOn) self.emit('subtitle', text, duration); },
@@ -86,9 +97,11 @@
         try { av.setSilentSubtitle(true); } catch (e) {}
         var go = function () {
           if (tk !== self.token) return;
-          av.play();
-          self.paused = false;
-          self.emit('state', 'playing');
+          self.started = true;
+          self.buffering = false;
+          try { av.play(); } catch (e) {}
+          self.sync();
+          self.emit('state', self.paused ? 'paused' : 'playing');
           self.emit('tracks');
         };
         if (opts.startAt > 0) av.seekTo(Math.floor(opts.startAt * 1000), go, go); else go();
@@ -97,22 +110,49 @@
       this.emit('error', e.message || String(e));
     }
   };
-  AVEngine.prototype.play = function () { try { this.av.play(); this.paused = false; this.emit('state', 'playing'); } catch (e) {} };
-  AVEngine.prototype.pause = function () { try { this.av.pause(); this.paused = true; this.emit('state', 'paused'); } catch (e) {} };
+  /* play() and pause() record what the viewer wants; sync() makes AVPlay match whenever it can take
+     the command. AVPlay throws on play/pause while it is preparing, buffering or seeking, which used
+     to leave the picture playing under a "paused" UI (or the reverse). */
+  AVEngine.prototype.sync = function () {
+    if (!this.started || this.seeking) return;
+    try {
+      var s = this.av.getState();
+      if (this.paused && s === 'PLAYING') this.av.pause();
+      else if (!this.paused && (s === 'PAUSED' || s === 'READY')) this.av.play();
+    } catch (e) {}
+  };
+  AVEngine.prototype.play = function () {
+    this.paused = false;
+    this.sync();
+    this.emit('state', this.buffering ? 'buffering' : 'playing');
+  };
+  AVEngine.prototype.pause = function () {
+    this.paused = true;
+    this.sync();
+    this.emit('state', 'paused');
+  };
+  AVEngine.prototype.isPaused = function () { return !!this.paused; };
   // AVPlay rejects a seek while another is running, so the latest request waits its turn.
+  // The position updates at once so quick repeated skips add up instead of being lost.
   AVEngine.prototype.seek = function (sec) {
-    var self = this;
+    var self = this, tk = this.token;
+    this.cur = sec;
     if (this.seeking) { this.pendingSeek = sec; return; }
     this.seeking = true;
-    this.cur = sec;
     var done = function () {
+      if (tk !== self.token) return;
       self.seeking = false;
-      if (self.pendingSeek != null) { var s = self.pendingSeek; self.pendingSeek = null; self.seek(s); }
+      if (self.pendingSeek != null) { var s = self.pendingSeek; self.pendingSeek = null; return self.seek(s); }
+      self.sync();
     };
     try { this.av.seekTo(Math.floor(sec * 1000), done, done); } catch (e) { done(); }
   };
   AVEngine.prototype.time = function () { return this.cur; };
-  AVEngine.prototype.duration = function () { try { return (this.av.getDuration() || 0) / 1000; } catch (e) { return 0; } };
+  // getDuration() is a call into the platform; the player asks several times a second.
+  AVEngine.prototype.duration = function () {
+    if (!this.dur) try { this.dur = (this.av.getDuration() || 0) / 1000; } catch (e) {}
+    return this.dur || 0;
+  };
   AVEngine.prototype.buffered = function () { return 0; };
   AVEngine.prototype.tracks = function () {
     var out = { audio: [], text: [], quality: [], cur: { audio: -1, text: this.textOn ? this.textIdx : -1, quality: -1 } };
@@ -158,8 +198,11 @@
     } catch (e) {}
     return out;
   };
+  // AVPlay is the TV's only video decoder, so there is no second player to grab thumbnails with.
+  AVEngine.prototype.preview = function () { return null; };
   AVEngine.prototype.close = function (keepToken) {
     if (!keepToken) this.token++;
+    this.started = false;
     this.seeking = false;
     this.pendingSeek = null;
     try { this.av.stop(); } catch (e) {}
@@ -185,7 +228,11 @@
     this.token = 0;
     v.addEventListener('waiting', function () { self.emit('state', 'buffering'); });
     v.addEventListener('playing', function () { self.emit('state', 'playing'); });
-    v.addEventListener('pause', function () { if (!v.ended) self.emit('state', 'paused'); });
+    // Pauses from outside the app (the browser's media keys) count as the viewer's choice too.
+    v.addEventListener('play', function () { self.userPaused = false; });
+    v.addEventListener('pause', function () { if (!v.ended) { self.userPaused = true; self.emit('state', 'paused'); } });
+    // A seek while paused fires "waiting" in some browsers but never "playing" afterwards.
+    v.addEventListener('seeked', function () { if (self.userPaused && !v.ended) self.emit('state', 'paused'); });
     v.addEventListener('timeupdate', function () { self.emit('time', self.time()); });
     v.addEventListener('ended', function () { self.emit('ended'); });
     v.addEventListener('loadedmetadata', function () { self.emit('tracks'); });
@@ -210,10 +257,12 @@
   HtmlEngine.prototype.open = function (url, opts) {
     var self = this, v = this.video, tk = ++this.token;
     this.close(true);
+    this.userPaused = false;
     this.emit('state', 'buffering');
     var isHls = /\.m3u8(\?|$)/i.test(url) || /\/live\//.test(url) && !/\.ts(\?|$)/i.test(url);
     var native = !!v.canPlayType('application/vnd.apple.mpegurl');
     this.remux = null;
+    this.src = { url: url, hls: isHls };
     // Firefox drops MKV/AVI audio, so the dev server repackages those files as MP4.
     if (Nova.useProxy && /firefox/i.test(navigator.userAgent) && /\.(mkv|avi)(\?|$)/i.test(url)) {
       this.remux = { url: url, offset: 0, dur: 0 };
@@ -231,7 +280,7 @@
         var once = function () { v.removeEventListener('loadedmetadata', once); v.currentTime = opts.startAt; };
         v.addEventListener('loadedmetadata', once);
       }
-      self.play();
+      if (!self.userPaused) self.play();
     };
     // hls.js is preferred even where HLS plays natively: it exposes audio, subtitle and quality tracks.
     if (isHls) {
@@ -241,7 +290,7 @@
         var hls = self.hls = new Hls({ startPosition: opts.startAt > 0 ? opts.startAt : -1, capLevelToPlayerSize: true, maxBufferLength: 30, enableWorker: true });
         hls.subtitleDisplay = false;
         var recovered = 0;
-        hls.on(Hls.Events.MANIFEST_PARSED, function () { hls.subtitleTrack = -1; self.play(); self.emit('tracks'); });
+        hls.on(Hls.Events.MANIFEST_PARSED, function () { hls.subtitleTrack = -1; if (!self.userPaused) self.play(); self.emit('tracks'); });
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function () { self.emit('tracks'); });
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function () { self.emit('tracks'); });
         hls.on(Hls.Events.ERROR, function (ev, d) {
@@ -260,6 +309,8 @@
   /* Firefox blocks autoplay with sound until the page has been clicked or a key pressed. When that
      happens, play muted and turn the sound on at the first click or key press. */
   HtmlEngine.prototype.play = function () {
+    this.userPaused = false;
+    if (this.thumbs) this.thumbs.release();
     var v = this.video, p = v.play();
     if (!p || !p.catch) return;
     p.catch(function (e) {
@@ -277,14 +328,16 @@
       document.addEventListener('keydown', unmute, true);
     });
   };
-  HtmlEngine.prototype.pause = function () { this.video.pause(); };
+  HtmlEngine.prototype.pause = function () { this.userPaused = true; this.video.pause(); };
+  HtmlEngine.prototype.isPaused = function () { return !!this.userPaused; };
   HtmlEngine.prototype.seek = function (sec) {
+    if (this.thumbs) this.thumbs.release();
     var r = this.remux;
     if (!r) { this.video.currentTime = sec; return; }
     // A repackaged stream can't jump, so seeking restarts it from the new position.
     r.offset = Math.max(0, r.dur ? Math.min(sec, r.dur - 1) : sec);
     this.video.src = '/remux?t=' + Math.floor(r.offset) + '&url=' + encodeURIComponent(r.url);
-    this.play();
+    if (!this.userPaused) this.play();
   };
   HtmlEngine.prototype.time = function () { return (this.remux ? this.remux.offset : 0) + (this.video.currentTime || 0); };
   HtmlEngine.prototype.duration = function () {
@@ -339,8 +392,15 @@
     }
     return out;
   };
+  HtmlEngine.prototype.preview = function () {
+    if (!this.src) return null;
+    var v = this.video;
+    if (!this.thumbs) this.thumbs = new Thumbs(this.src.url, this.src.hls, function () { return v.networkState !== v.NETWORK_LOADING; });
+    return this.thumbs.failed ? null : this.thumbs;
+  };
   HtmlEngine.prototype.close = function (keepToken) {
     if (!keepToken) this.token++;
+    if (this.thumbs) { this.thumbs.close(); this.thumbs = null; }
     if (this.hls) { this.hls.destroy(); this.hls = null; }
     this.remux = null;
     var v = this.video;
@@ -348,6 +408,110 @@
     v.removeAttribute('src');
     try { v.load(); } catch (e) {}
     v.playbackRate = 1;
+  };
+
+  /* ---------------- seek thumbnails ---------------- */
+
+  /* A hidden, muted second <video> on the same stream. get(t, cb) seeks it and draws that frame
+     into a small canvas; only the newest request is kept while a seek is running, so holding an
+     arrow key never queues up a backlog.
+     Many IPTV accounts allow one connection at a time: while the preview holds one, the main video's
+     next request is refused, and a new connection can cut off one that is still downloading. So the
+     preview only connects during a scrub, once the main video has stopped downloading (idle() says
+     so), and release() drops the connection (keeping the frames) before the main video seeks or
+     plays again. */
+  var THUMB_W = 320, THUMB_STEP = 4, THUMB_KEEP = 60;
+
+  function Thumbs(url, isHls, idle) {
+    var self = this, v = this.v = document.createElement('video');
+    this.idle = idle;
+    v.muted = true;
+    v.preload = 'metadata';
+    v.setAttribute('playsinline', '');
+    this.url = url;
+    this.isHls = isHls;
+    this.cache = {};
+    this.order = [];
+    this.busy = null;
+    this.want = null;
+    this.ready = false;
+    this.attached = false;
+    this.failed = isHls && !(window.Hls && Hls.isSupported()) && !v.canPlayType('application/vnd.apple.mpegurl');
+    v.addEventListener('loadedmetadata', function () { self.ready = true; self.kick(); });
+    v.addEventListener('seeked', function () { requestAnimationFrame(function () { self.grab(); }); });
+    v.addEventListener('error', function () { if (self.attached) self.fail(); });
+  }
+  Thumbs.prototype.attach = function () {
+    var self = this, v = this.v, url = this.url;
+    this.attached = true;
+    if (this.isHls && window.Hls && Hls.isSupported()) {
+      // The lowest quality is plenty for a 320-pixel picture and loads fastest.
+      var hls = this.hls = new Hls({ startLevel: 0, maxBufferLength: 2, maxMaxBufferLength: 4, enableWorker: true, autoStartLoad: true });
+      hls.on(Hls.Events.MANIFEST_PARSED, function () { hls.autoLevelCapping = 0; hls.currentLevel = 0; });
+      hls.on(Hls.Events.ERROR, function (ev, d) { if (d.fatal) self.fail(); });
+      hls.loadSource(Nova.useProxy ? '/proxy?url=' + encodeURIComponent(url) : url);
+      hls.attachMedia(v);
+    } else {
+      v.src = this.isHls && Nova.useProxy ? '/proxy?url=' + encodeURIComponent(url) : url;
+    }
+  };
+  Thumbs.prototype.release = function () {
+    clearTimeout(this.wait);
+    if (!this.attached) return;
+    clearTimeout(this.guard);
+    this.attached = this.ready = false;
+    this.busy = this.want = null;
+    if (this.hls) { this.hls.destroy(); this.hls = null; }
+    this.v.removeAttribute('src');
+    try { this.v.load(); } catch (e) {}
+  };
+  Thumbs.prototype.key = function (t) { return Math.round(t / THUMB_STEP) * THUMB_STEP; };
+  // cb(canvas, t) runs with the cached frame at once, or later when it has been drawn.
+  Thumbs.prototype.get = function (t, cb) {
+    var k = this.key(t);
+    if (this.cache[k]) return cb(this.cache[k], k);
+    this.want = { k: k, cb: cb };
+    if (!this.attached) this.connect();
+    this.kick();
+  };
+  Thumbs.prototype.connect = function () {
+    var self = this;
+    clearTimeout(this.wait);
+    if (this.attached || !this.want || this.failed) return;
+    if (this.idle()) this.attach();
+    else this.wait = setTimeout(function () { self.connect(); }, 250);
+  };
+  Thumbs.prototype.kick = function () {
+    if (this.busy || !this.want || !this.ready || this.failed) return;
+    var self = this, job = this.busy = this.want, v = this.v;
+    this.want = null;
+    clearTimeout(this.guard);
+    // A seek that never finishes (stalled network) mustn't block every later thumbnail.
+    this.guard = setTimeout(function () { if (self.busy === job) { self.busy = null; self.kick(); } }, 6000);
+    var t = Math.min(job.k, (v.duration || 1e9) - 0.5);
+    // fastSeek lands on the nearest keyframe, which is much quicker and close enough here.
+    if (v.fastSeek) v.fastSeek(t); else v.currentTime = t;
+  };
+  Thumbs.prototype.grab = function () {
+    var job = this.busy, v = this.v;
+    if (!job || !v.videoWidth) return;
+    clearTimeout(this.guard);
+    this.busy = null;
+    var c = document.createElement('canvas');
+    c.width = THUMB_W;
+    c.height = Math.round(THUMB_W * v.videoHeight / v.videoWidth);
+    try { c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); } catch (e) { return this.fail(); }
+    this.cache[job.k] = c;
+    this.order.push(job.k);
+    if (this.order.length > THUMB_KEEP) delete this.cache[this.order.shift()];
+    job.cb(c, job.k);
+    this.kick();
+  };
+  Thumbs.prototype.fail = function () { this.failed = true; this.busy = this.want = null; };
+  Thumbs.prototype.close = function () {
+    this.release();
+    this.failed = true;
+    this.cache = {};
   };
 
   var instance = null;

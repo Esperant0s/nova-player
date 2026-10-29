@@ -2,7 +2,7 @@
 
 Nova.router.register('details', function (params) {
   var item = params.item, isSeries = item.type === 'series';
-  var el = Nova.el('div', 'screen details');
+  var el = Nova.el('div', 'screen details' + (isSeries ? ' is-series' : ''));
   el.innerHTML = '<div class="det-bg"></div><div class="det-shade"></div>' +
     '<div class="det-info"><div class="bb-kicker">' + (isSeries ? 'Series' : 'Movie') + '</div>' +
     '<h1 class="bb-title">' + Nova.esc(item.name) + '</h1><div class="bb-meta"></div>' +
@@ -123,7 +123,7 @@ Nova.router.register('details', function (params) {
     if (isSeries) {
       Array.prototype.forEach.call(el.querySelectorAll('.det-seasons .tab'), function (t, i) { t.classList.toggle('focused', zone === 'season' && i === seasonIdx); });
       if (epRows) { if (zone === 'eps') epRows.focusIn(); else epRows.blur(); }
-      el.classList.toggle('eps-focus', zone !== 'btn');
+      el.classList.toggle('eps-focus', zone === 'season' || zone === 'eps');
     }
   }
 

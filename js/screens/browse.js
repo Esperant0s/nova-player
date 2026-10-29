@@ -104,13 +104,14 @@ Nova.router.register('browse', function (params) {
     lib = api.lib;
     var rows = [];
     if (section === 'home') {
-      rows.push(Nova.continueRow());
-      rows.push({ title: 'Top Picks for You', shape: 'portrait', items: Nova.recommend.picks() });
       var because = Nova.recommend.becauseRows(2);
+      rows.push(Nova.continueRow());
       rows.push({ title: 'My List', shape: 'portrait', items: favItems('movie').concat(favItems('series')) });
       rows.push({ title: 'Favourite Channels', shape: 'landscape', items: favItems('live'), opts: liveOpts });
-      if (because[0]) rows.push(because[0]);
+      // The suggestions feed comes right before the new arrivals.
+      rows.push({ title: 'Top Picks for You', shape: 'portrait', items: Nova.recommend.picks() });
       rows.push({ title: 'Recently Added Movies', shape: 'portrait', items: api.recent('movie') });
+      if (because[0]) rows.push(because[0]);
       rows.push({ title: 'New in Series', shape: 'portrait', items: api.recent('series') });
       if (because[1]) rows.push(because[1]);
       var mc = catRows('movie', 8), sc = catRows('series', 8);
@@ -227,6 +228,9 @@ Nova.router.register('browse', function (params) {
     showFocused();
   }
   Nova.bus.on('library', refresh);
+  // My List and Home show favourites, which the yellow button changes on this very screen.
+  var watchFavs = section === 'mylist' || section === 'home';
+  if (watchFavs) Nova.bus.on('favs', refresh);
 
   // Country lookups for Asian movies arrive in batches; refresh counts, and rows when an Asian filter is showing.
   function onRegions() {
@@ -246,6 +250,7 @@ Nova.router.register('browse', function (params) {
     focusIn: function () { if (chipsFocused) chips.focus(); else rows.focusIn(); },
     destroy: function () {
       Nova.bus.off('library', refresh);
+      Nova.bus.off('favs', refresh);
       Nova.bus.off('regions', onRegions);
       clearTimeout(infoTimer);
       showFocusedSoon.cancel();
@@ -253,6 +258,12 @@ Nova.router.register('browse', function (params) {
     },
     onKey: function (act) {
       if (chipsFocused) { chips.onKey(act); return; }
+      // Nothing to move between (an empty My List, say): Left and Up lead out, like Back.
+      if (!rows.rows.length) {
+        if (act === 'up' && chips) focusChips();
+        else if (act === 'left' || act === 'up' || act === 'back') { rows.blur(); Nova.menu.focus(); }
+        return;
+      }
       if (act === 'back') {
         if (rows.row > 0) { rows.row = 0; rows.render(); showFocused(); }
         else { rows.blur(); Nova.menu.focus(); }

@@ -174,18 +174,37 @@
     features: features,
     reset: function () { memo = {}; },
 
-    // Best matches for the whole taste profile; `type` and region `tag` narrow it.
+    /* Best matches for the whole taste profile; `type` and region `tag` narrow it. Until there is
+       enough to go on (nothing watched, rated or in My List yet), the row is topped up with
+       well-rated titles, newer ones first, so the feed is never empty. */
     picks: function (type, tag, n) {
       var key = 'picks:' + (type || '') + ':' + (tag || '');
       if (memo[key]) return memo[key];
-      var t = taste(), prof = t.prof, scored = [];
-      if (t.signals) each(type, function (it) {
+      n = n || 40;
+      var t = taste(), prof = t.prof, scored = [], starters = [];
+      each(type, function (it) {
         if (t.skip[it.type + ':' + it.id] || (tag && (!it.tags || it.tags.indexOf(tag) < 0))) return;
-        var f = features(it), s = 0;
-        for (var i = 0; i < f.length; i++) { var v = prof[f[i]]; if (v) s += v * WEIGHT[f[i].charAt(0)]; }
-        if (s > 0) scored.push({ it: it, s: s * prior(it) });
+        if (t.signals) {
+          var f = features(it), s = 0;
+          for (var i = 0; i < f.length; i++) { var v = prof[f[i]]; if (v) s += v * WEIGHT[f[i].charAt(0)]; }
+          if (s > 0) return scored.push({ it: it, s: s * prior(it) });
+          if (s < 0) return;
+        }
+        // A perfect 10 is almost always a title with a handful of votes, so those are left out, as are titles with no poster.
+        if (it.rating > 0 && it.rating < 9.8 && it.img) starters.push({ it: it, s: it.rating * (0.5 + 0.5 * decay(it.added * 1000, 365)) });
       });
-      return (memo[key] = diverse(scored, n || 40));
+      var out = diverse(scored, n);
+      if (out.length < n / 2) {
+        var need = n - out.length;
+        // On Home, movies and series take turns; series alone would fill it, their dates are fresher.
+        var mv = diverse(starters.filter(function (x) { return x.it.type === 'movie'; }), need);
+        var sr = diverse(starters.filter(function (x) { return x.it.type === 'series'; }), need);
+        for (var j = 0; out.length < n && (j < mv.length || j < sr.length); j++) {
+          if (j < mv.length) out.push(mv[j]);
+          if (j < sr.length && out.length < n) out.push(sr[j]);
+        }
+      }
+      return (memo[key] = out);
     },
 
     // Titles like one particular title.

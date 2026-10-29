@@ -85,10 +85,12 @@
         onsubtitlechange: function (duration, text) { if (tk === self.token && self.textOn) self.emit('subtitle', text, duration); },
         onevent: function () {}
       });
-      // Smaller start buffers make channels start noticeably faster.
+      // A small start buffer makes channels start noticeably faster. The resume buffer (after a
+      // stall) stays large: a small one on a connection barely faster than the stream drains in
+      // seconds and stalls again, over and over.
       try {
         av.setBufferingParam('PLAYER_BUFFER_FOR_PLAY', 'PLAYER_BUFFER_SIZE_IN_SECOND', opts.live ? 2 : 4);
-        av.setBufferingParam('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', opts.live ? 3 : 6);
+        av.setBufferingParam('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', opts.live ? 15 : 20);
       } catch (e) {}
       try { av.setTimeoutForBuffering(20); } catch (e) {}
       this.emit('state', 'buffering');

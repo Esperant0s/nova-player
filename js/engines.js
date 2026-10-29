@@ -198,6 +198,8 @@
         if (s.type === 'AUDIO') out.audio = x.fourCC;
       });
     } catch (e) {}
+    // How fast AVPlay is downloading right now, to compare with the stream's own bitrate.
+    try { out.download = parseInt(this.av.getStreamingProperty('CURRENT_BANDWIDTH'), 10) || 0; } catch (e) {}
     return out;
   };
   // AVPlay is the TV's only video decoder, so there is no second player to grab thumbnails with.

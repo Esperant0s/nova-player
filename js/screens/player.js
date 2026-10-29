@@ -399,6 +399,7 @@ Nova.router.register('player', function (params) {
       if (i.codec) parts.push(i.codec.toUpperCase());
       if (i.audio) parts.push(i.audio.toUpperCase());
       if (i.bitrate) parts.push((i.bitrate / 1e6).toFixed(1) + ' Mbps');
+      if (i.download) parts.push('Downloading ' + (i.download / 1e6).toFixed(1) + ' Mbps');
       parts.push(engine.name + ' engine');
       s.textContent = parts.join('  ·  ');
     };

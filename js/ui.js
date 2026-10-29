@@ -75,7 +75,7 @@ Nova.menu = {
   },
   go: function (i) {
     this.blur();
-    if (i === this.active) { var top = Nova.router.top(); if (top.focusIn) top.focusIn(); return; }
+    if (i === this.active && Nova.router.top().menu) { var top = Nova.router.top(); if (top.focusIn) top.focusIn(); return; }
     Nova.router.root(this.items[i].screen, this.items[i].params);
   },
   setVisible: function (v, active) {
@@ -88,7 +88,10 @@ Nova.menu = {
     });
     if (!v) this.blur();
   },
+  // Screens without the menu (title details) can still open it over themselves; it hides again on blur.
   focus: function () {
+    this.overlay = !this.root.classList.contains('show');
+    this.root.classList.add('show');
     this.focused = true;
     this.index = this.active != null ? this.active : 1;
     this.root.classList.add('open');
@@ -97,6 +100,7 @@ Nova.menu = {
   blur: function () {
     this.focused = false;
     this.root.classList.remove('open');
+    if (this.overlay) { this.overlay = false; this.root.classList.remove('show'); }
     this._mark();
   },
   _mark: function () {

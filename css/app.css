@@ -425,7 +425,9 @@ body:not(.playing) #video-layer { visibility: hidden; }
   background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; font-size: 32px;
 }
 #backbtn.show { display: flex; }
-#backbtn:hover, .p-back:hover { background: #fff; color: #000; }
+#backbtn:hover, #backbtn.focused, .p-back:hover { background: #fff; color: #000; }
+#backbtn.focused { transform: scale(1.1); }
+#menu.open ~ #backbtn { display: none; }
 
 .screen.player { background: transparent; }
 .player:not(.controls) { cursor: none; }

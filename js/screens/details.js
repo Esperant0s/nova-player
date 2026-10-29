@@ -13,7 +13,9 @@ Nova.router.register('details', function (params) {
   var art = new Nova.Backdrop(el.querySelector('.det-bg'));
   Nova.Billboard.art(art, item, Nova.api.infoNow(item));
 
+  // Zones: 'btn', 'rate', 'season', 'eps', 'back' (the on-screen back arrow) and 'menu' (side menu open).
   var info = null, zone = 'btn', btnIdx = 0, starIdx = 0, seasonIdx = 0, buttons = [], epRows = null;
+  var fromZone = 'btn', menuFrom = 'btn', backBtn = document.getElementById('backbtn');
 
   function epProgress(ep) { return Nova.progress.get('ep:' + ep.id); }
 
@@ -88,7 +90,11 @@ Nova.router.register('details', function (params) {
           var p = epProgress(ep);
           play(ep, p && !p.done && p.pos > 30 ? p.pos : 0);
         },
-        onEdge: function (dir) { if (dir === 'up') { zone = 'season'; mark(); } return true; },
+        onEdge: function (dir) {
+          if (dir === 'up') { zone = 'season'; mark(); }
+          else if (dir === 'left') openMenu();
+          return true;
+        },
         onPointer: function () { zone = 'eps'; mark(); }
       });
     } else epRows.setRows([row]);
@@ -117,13 +123,21 @@ Nova.router.register('details', function (params) {
     renderRating();
   }
 
+  // Up from the top row reaches the back arrow; Down returns to where it came from.
+  function toBack() { fromZone = zone; zone = 'back'; mark(); }
+
+  // Left from the left edge opens the side menu, as on Browse; Right or Back from it returns here.
+  function openMenu() { menuFrom = zone; zone = 'menu'; mark(); Nova.menu.focus(); }
+
   function mark() {
+    backBtn.classList.toggle('focused', zone === 'back');
     Array.prototype.forEach.call(el.querySelectorAll('.det-btns .btn'), function (b, i) { b.classList.toggle('focused', zone === 'btn' && i === btnIdx); });
     renderRating();
     if (isSeries) {
       Array.prototype.forEach.call(el.querySelectorAll('.det-seasons .tab'), function (t, i) { t.classList.toggle('focused', zone === 'season' && i === seasonIdx); });
       if (epRows) { if (zone === 'eps') epRows.focusIn(); else epRows.blur(); }
-      el.classList.toggle('eps-focus', zone === 'season' || zone === 'eps');
+      var low = zone === 'menu' ? menuFrom : zone;
+      el.classList.toggle('eps-focus', low === 'season' || low === 'eps');
     }
   }
 
@@ -157,6 +171,9 @@ Nova.router.register('details', function (params) {
 
   return {
     el: el,
+    focusIn: function () { if (zone === 'menu') { zone = menuFrom; mark(); } },
+    hide: function () { backBtn.classList.remove('focused'); },
+    destroy: function () { backBtn.classList.remove('focused'); },
     show: function (fresh) {
       if (fresh) return;
       // Returning from the player: progress has changed.
@@ -164,13 +181,18 @@ Nova.router.register('details', function (params) {
       if (isSeries && info && info.seasons.length) renderSeasons();
     },
     onKey: function (act, e) {
-      if (act === 'back') { Nova.router.back(); return; }
+      if (act === 'back' || (zone === 'back' && act === 'ok')) { Nova.router.back(); return; }
       if (act === 'yellow') { buttons[buttons.length - 1].fn(); return; }
       // Number keys rate directly: 1 to 5 stars, 0 removes the rating.
       if (act === 'digit' && e.digit <= 5) { rate(e.digit); return; }
       var hasEps = isSeries && info && info.seasons.length;
-      if (zone === 'btn') {
-        if (act === 'left') btnIdx = Math.max(0, btnIdx - 1);
+      if (zone === 'back') {
+        if (act === 'down') { zone = fromZone; mark(); }
+        else if (act === 'left') openMenu();
+      } else if (zone === 'btn') {
+        if (act === 'left' && btnIdx === 0) { openMenu(); return; }
+        if (act === 'left') btnIdx--;
+        else if (act === 'up') { toBack(); return; }
         else if (act === 'right' && btnIdx < buttons.length - 1) btnIdx++;
         else if (act === 'right') { zone = 'rate'; starIdx = Math.max(0, Nova.ratings.get(item) - 1); }
         else if (act === 'down' && hasEps) zone = 'season';
@@ -180,15 +202,17 @@ Nova.router.register('details', function (params) {
         if (act === 'left' && starIdx > 0) starIdx--;
         else if (act === 'left') zone = 'btn';
         else if (act === 'right') starIdx = Math.min(4, starIdx + 1);
+        else if (act === 'up') { toBack(); return; }
         else if (act === 'down' && hasEps) zone = 'season';
         else if (act === 'ok') { rate(starIdx + 1); return; }
         mark();
       } else if (zone === 'season') {
         if (act === 'left' && seasonIdx > 0) { seasonIdx--; renderSeasons(); }
+        else if (act === 'left') openMenu();
         else if (act === 'right' && seasonIdx < info.seasons.length - 1) { seasonIdx++; renderSeasons(); }
         else if (act === 'up') { zone = 'btn'; mark(); }
         else if (act === 'down' || act === 'ok') { zone = 'eps'; mark(); }
-      } else {
+      } else if (zone === 'eps') {
         epRows.onKey(act);
       }
     }

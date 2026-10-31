@@ -59,9 +59,14 @@ async function proxy(req, res, target) {
       const body = await up.text();
       out['Content-Type'] = 'application/vnd.apple.mpegurl';
       res.writeHead(up.status, out);
-      return res.end(body.startsWith('#EXTM3U') ? rewritePlaylist(body, up.url) : body);
+      // Only HLS playlists are rewritten. An M3U list of channels and movies is data for the app,
+      // which must see the real links to tell movies from channels.
+      return res.end(body.startsWith('#EXTM3U') && /#EXT-X-/.test(body) ? rewritePlaylist(body, up.url) : body);
     }
+    // fetch() unpacks gzip, so the upstream length would be the packed one and cut the body short.
+    const packed = !!up.headers.get('content-encoding');
     for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+      if (h === 'content-length' && packed) continue;
       const v = up.headers.get(h);
       if (v) out[h] = v;
     }

@@ -48,13 +48,22 @@ Nova.fmtClock = function (d) {
 Nova.clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
 
 Nova.debounce = function (fn, ms) {
-  var t;
+  var t, pending = false, pself, pargs;
   var d = function () {
-    var args = arguments, self = this;
+    pargs = arguments;
+    pself = this;
+    pending = true;
     clearTimeout(t);
-    t = setTimeout(function () { fn.apply(self, args); }, ms);
+    t = setTimeout(function () { pending = false; fn.apply(pself, pargs); }, ms);
   };
-  d.cancel = function () { clearTimeout(t); };
+  d.cancel = function () { clearTimeout(t); pending = false; };
+  // Runs a pending call now (nothing happens if none is waiting).
+  d.flush = function () {
+    if (!pending) return;
+    clearTimeout(t);
+    pending = false;
+    fn.apply(pself, pargs);
+  };
   return d;
 };
 

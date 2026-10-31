@@ -73,6 +73,7 @@ Nova.app = {
       title: 'Exit Nova?',
       buttons: [
         { label: 'Exit', fn: function () {
+          Nova.saveNow();
           try { tizen.application.getCurrentApplication().exit(); } catch (e) { Nova.ui.toast('Exit only works on the TV'); }
         } },
         { label: 'Cancel' }

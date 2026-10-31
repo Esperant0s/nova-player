@@ -162,7 +162,8 @@ Nova.regions = (function () {
     countries[item.id] = [country || '', genre || ''];
     if (genre && !item.genre) item.genre = genre;
     var ct = (catTagMap.movie || {})[item.cat];
-    if (ct) item.tags = itemTags(item, ct);
+    // One filter per title, as in tagAll.
+    if (ct) item.tags = primary(itemTags(item, ct));
     if (++unsaved >= 20) saveNow(); else saveSoon();
   }
 

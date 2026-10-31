@@ -93,6 +93,12 @@ Nova.progress = {
   clear: function () { this._all = {}; Nova.prefs.set('progress', {}); }
 };
 
+// Writes out saves that are still waiting on a timer, before the TV suspends or closes the app.
+Nova.saveNow = function () {
+  Nova.progress._save.flush();
+  if (Nova.history) Nova.history._save.flush();
+};
+
 Nova.favs = {
   _all: null,
   _load: function () {

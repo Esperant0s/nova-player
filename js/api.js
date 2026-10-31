@@ -146,6 +146,19 @@
 
   /* ---------------- M3U playlist ---------------- */
 
+  /* Ids must survive the provider reordering its playlist, or My List and resume points would point
+     at other titles, so they come from the link (and a show's name) rather than the line number.
+     Two 32-bit hashes together, since one would likely collide somewhere in a 50,000-title playlist. */
+  function hashId(s) {
+    var a = 0, b = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      a = (a * 31 + c) | 0;
+      b = (b * 131 + c) | 0;
+    }
+    return 'h' + (a >>> 0).toString(36) + '_' + (b >>> 0).toString(36);
+  }
+
   function M3U(acc) { this.acc = acc; this.series = {}; }
   M3U.prototype.login = function () { return this.library().then(function () { return {}; }); };
   M3U.prototype.library = function () {
@@ -177,14 +190,15 @@
         var rest = line.replace(attrRe, '');
         cur = { name: (rest.substring(rest.indexOf(',') + 1) || attrs['tvg-name'] || '').trim(), logo: attrs['tvg-logo'] || '', group: attrs['group-title'] || '', epg: attrs['tvg-id'] || '' };
       } else if (line[0] !== '#' && cur) {
-        var url = line, id = String(++n);
+        var url = line, id = hashId(url);
+        n++;
         var path = url.split('?')[0].toLowerCase();
         var se = /^(.*?)[\s._-]*s(\d{1,2})[\s._-]*e(\d{1,3})/i.exec(cur.name);
         if (path.indexOf('/series/') >= 0 && se) {
           var showName = se[1].trim() || cur.name;
           var show = shows[showName];
           if (!show) {
-            show = shows[showName] = { type: 'series', id: 's' + id, name: showName, img: cur.logo, cat: cat('series', cur.group), added: 0, rating: 0, plot: '', genre: '', backdrop: '', year: yearOf(showName) };
+            show = shows[showName] = { type: 'series', id: 's' + hashId(showName), name: showName, img: cur.logo, cat: cat('series', cur.group), added: 0, rating: 0, plot: '', genre: '', backdrop: '', year: yearOf(showName) };
             out.series.items.push(show);
             this.series[show.id] = {};
           }

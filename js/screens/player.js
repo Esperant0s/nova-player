@@ -678,7 +678,7 @@ Nova.router.register('player', function (params) {
 
   var hiddenAt = null;
   function onVisibility() {
-    if (document.hidden) { saveProgress(); hiddenAt = live ? 0 : engine.time(); engine.close(); }
+    if (document.hidden) { saveProgress(); Nova.saveNow(); hiddenAt = live ? 0 : engine.time(); engine.close(); }
     else if (hiddenAt != null) { var t = hiddenAt; hiddenAt = null; open(t); }
   }
   document.addEventListener('visibilitychange', onVisibility);
@@ -715,7 +715,14 @@ Nova.router.register('player', function (params) {
         if (act === 'digit') return numKey(e.digit);
         if (act === 'chup' || act === 'up') return zap(1);
         if (act === 'chdown' || act === 'down') return zap(-1);
-        if (act === 'prech' || act === 'green') { if (prevChannel) { var pi = list.indexOf(prevChannel); if (pi < 0) { list = [prevChannel]; pi = 0; } setChannel(pi); } return; }
+        if (act === 'prech' || act === 'green') {
+          if (!prevChannel) return;
+          // The previous channel may be outside this list (reached by number): zap through all channels then, not a list of one.
+          var pi = list.indexOf(prevChannel);
+          if (pi < 0) { list = Nova.api.lib.live.items; pi = list.indexOf(prevChannel); }
+          if (pi >= 0) setChannel(pi);
+          return;
+        }
         if (act === 'yellow') return toggleFav();
         if (act === 'info') { if (controls) toggleStats(); else showControls(); return; }
         if (!controls) {

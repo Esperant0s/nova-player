@@ -249,7 +249,7 @@ Nova.regions = (function () {
     // Big mixed categories (like one "Asian" category) are easier to browse by genre.
     var byGenre = {};
     all.forEach(function (it) {
-      String(it.genre || '').split(/\s*[,\/&|]\s*/).forEach(function (g) {
+      String(it.genre || '').split(Nova.GENRE_SEP).forEach(function (g) {
         g = g.trim();
         if (!g || g.length > 24) return;
         g = g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();

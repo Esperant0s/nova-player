@@ -12,6 +12,7 @@ Nova.artwork = (function () {
   var MISS_DAYS = 14;
   var found = {};     // 'movie:123' -> TMDB image path, or the time a lookup found nothing
   var pending = {};
+  var people = {};    // folded query -> Promise of a person and their credits (this session only)
   var cacheKey = null;
   var save = Nova.debounce(function () { if (cacheKey) Nova.cache.set(cacheKey, found); }, 2000);
 
@@ -114,6 +115,56 @@ Nova.artwork = (function () {
         });
       }
       return pending[k];
+    },
+
+    // A title folded the same way for the library and for TMDB, so the two can be compared.
+    // A title that is only a year ("1917", "2012") keeps it.
+    titleKey: function (name) { var k = fold(query(name)) || fold(name); return k.length >= 2 ? k : ''; },
+
+    /* The best-known actor or director whose name (or a later word of it) starts with what was
+       typed, with the movies and series they acted in or directed: { name, exact, titles: [{ tv, names,
+       year, votes }] }. exact is true when what was typed is the whole name or its last words ("hanks"),
+       not just the start of one ("star" for Ringo Starr). Resolves null without a key, for fewer than
+       four letters, or when nobody matches. */
+    person: function (q) {
+      var want = fold(q), arabic = /[\u0600-\u06ff]/.test(q);
+      if (!key() || want.length < 4) return Promise.resolve(null);
+      if (people[want]) return people[want];
+      // 2 when the query is the name or its last words, 1 when it starts one of them, 0 otherwise.
+      function named(p) {
+        var w = String(p.name || '').split(/\s+/).map(fold), tail = '', best = 0;
+        for (var i = w.length - 1; i >= 0; i--) {
+          tail = w[i] + tail;
+          if (tail === want) return 2;
+          if (tail.indexOf(want) === 0) best = 1;
+        }
+        // TMDB also matches Arabic names it keeps as alternatives, but returns the English one.
+        return arabic ? 2 : best;
+      }
+      people[want] = request('/search/person', 'query=' + encodeURIComponent(String(q).trim())).then(function (r) {
+        var hit = null, how = 0;
+        ((r && r.results) || []).some(function (p) {
+          if (p.known_for_department === 'Acting' || p.known_for_department === 'Directing') how = named(p);
+          if (how) hit = p;
+          return how;
+        });
+        if (!hit) return null;
+        return request('/person/' + hit.id + '/combined_credits', '').then(function (c) {
+          // Talk-show appearances, guest roles and directing an episode or two aren't what people look for.
+          function minor(x) { return x.media_type === 'tv' && x.episode_count < 3; }
+          var titles = ((c && c.cast) || []).filter(function (x) { return !minor(x) && !/^(self|himself|herself)\b/i.test(x.character || ''); })
+            .concat(((c && c.crew) || []).filter(function (x) { return !minor(x) && (x.job === 'Director' || x.job === 'Creator'); }));
+          return {
+            name: hit.name,
+            exact: how === 2,
+            titles: titles.map(function (x) {
+              return { tv: x.media_type === 'tv', names: [x.title, x.name, x.original_title, x.original_name].filter(Boolean),
+                year: String(x.release_date || x.first_air_date || '').slice(0, 4), votes: x.vote_count || 0 };
+            })
+          };
+        });
+      }).catch(function () { delete people[want]; return null; });
+      return people[want];
     },
 
     // Saves a new key and checks it with TMDB. Resolves true when TMDB accepts it.

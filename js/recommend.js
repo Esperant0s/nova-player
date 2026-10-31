@@ -30,7 +30,7 @@
     info = info || {};
     var f = ['c:' + it.type + ':' + it.cat];
     (it.tags || []).forEach(function (t) { f.push('t:' + t); });
-    list(info.genre || it.genre, /\s*[,\/&|]\s*/).forEach(function (g) { f.push('g:' + g); });
+    list(info.genre || it.genre, Nova.GENRE_SEP).forEach(function (g) { f.push('g:' + g); });
     list(info.cast || it.cast, /\s*,\s*/).slice(0, 6).forEach(function (p) { f.push('p:' + p); });
     list(info.director, /\s*,\s*/).slice(0, 2).forEach(function (d) { f.push('d:' + d); });
     var y = parseInt(info.year || it.year, 10);

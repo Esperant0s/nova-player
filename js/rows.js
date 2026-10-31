@@ -47,7 +47,13 @@ Nova.Rows.prototype = {
       var j = keepFocus ? prevTitles.indexOf(r.title) : -1;
       return j >= 0 ? Math.min(prevCols[j] || 0, r.items.length - 1) : 0;
     });
-    this.row = keepFocus ? Math.min(prevRow, Math.max(0, rows.length - 1)) : 0;
+    // Focus follows its row when rows are added or removed above it (the nth row of that title, if titles repeat).
+    var same = -1;
+    if (keepFocus) {
+      var t = prevTitles[prevRow], nth = prevTitles.slice(0, prevRow).filter(function (x) { return x === t; }).length;
+      for (var k = 0; k < rows.length && same < 0; k++) if (rows[k].title === t && nth-- === 0) same = k;
+    }
+    this.row = same >= 0 ? same : keepFocus ? Math.min(prevRow, Math.max(0, rows.length - 1)) : 0;
     this.inner.innerHTML = '';
     this.rowEls = {};
     this.render();

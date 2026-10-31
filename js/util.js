@@ -74,6 +74,9 @@ Nova.hue = function (str) {
   return Math.abs(h) % 360;
 };
 
+// How providers separate genres in one field: "Action, Drama", "Sci-Fi & Fantasy", "Crime / Thriller".
+Nova.GENRE_SEP = /\s*[,\/&|]\s*/;
+
 // Provider tags at the end of titles: "(AS Series 2026)", "[EN2026]", "[ASN.2026]", "(ENTOP)", "(2009)".
 Nova.NAME_TAG = /\s*[\(\[]\s*((?:[A-Z][A-Za-z]{0,5}(?:-Series| Series)?|box|IMDB)?[\s.\-–]*(?:(?:19|20)\d{2}(?:\s*[-–]\s*(?:(?:19|20)\d{2})?)?)?[\s.\-–]*)[\)\]]\s*$/;
 

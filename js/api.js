@@ -298,6 +298,35 @@
 
   var memo = {}, infoDone = {}, folded = {};
 
+  /* What a title is about besides its name: genres, cast, director and category, folded and split
+     so every word can start a match ("hanks" finds "Tom Hanks", "drama" a "Drama, Crime" title).
+     Cast and director of movies are only known once their info has been loaded. */
+  // Words in nearly every category name, which would make a search for them match everything.
+  var CAT_NOISE = /^(movies?|films?|series|shows?|vod|tv|channels?|hd|fhd|uhd|4k)$/;
+  function words(s, noise) {
+    var out = [];
+    String(s || '').split(Nova.GENRE_SEP).forEach(function (term) {
+      // Each word is folded once; the tails are built back to front ("tomhanks", "hanks").
+      var w = term.split(/\s+/).map(fold), tail = '';
+      for (var i = w.length - 1; i >= 0; i--) if (w[i]) { tail = w[i] + tail; if (!noise || !noise.test(tail)) out.push(tail); }
+    });
+    return out.join('|');
+  }
+  function aboutOf(it, cats) {
+    var info = infoDone[it.type + ':' + it.id] || {};
+    return '|' + [words(info.genre || it.genre), words(info.cast || it.cast), words(info.director), cats[it.cat] || ''].join('|');
+  }
+  // Worked out once per library on the first search that needs it, like the folded names.
+  function aboutList(type) {
+    var k = 'about:' + type;
+    if (!folded[k]) {
+      var cats = folded['cats:' + type] = {};
+      Nova.api.lib[type].cats.forEach(function (c) { cats[c.id] = words(c.name, CAT_NOISE); });
+      folded[k] = Nova.api.lib[type].items.map(function (it) { return aboutOf(it, cats); });
+    }
+    return folded[k];
+  }
+
   Nova.api = {
     account: null,
     provider: null,
@@ -429,6 +458,9 @@
           .then(function (info) {
             if (item.type === 'movie' && info.country) Nova.regions.remember(item, info.country, info.genre);
             infoDone[k] = info;
+            // Searches can now find the title by its cast, director and genre too.
+            var about = folded['about:' + item.type], i = about ? Nova.api.lib[item.type].items.indexOf(item) : -1;
+            if (i >= 0) about[i] = aboutOf(item, folded['cats:' + item.type]);
             return info;
           })
           .catch(function (e) { delete memo[k]; throw e; });
@@ -453,19 +485,49 @@
       return this.lib[type].items.slice().sort(function (a, b) { return b.added - a.added; }).slice(0, n || 40);
     },
 
+    // Titles whose name starts with the query, then names containing it, then titles matching by
+    // genre, cast, director or category (from three letters on, so short queries stay about names).
     search: function (q, type, limit) {
       q = fold(q);
       if (!q) return [];
-      var starts = [], contains = [];
+      var starts = [], contains = [], related = [];
       var items = this.lib[type].items;
       // Folded names are worked out once per library, on the first search.
       var names = folded[type] || (folded[type] = items.map(function (it) { return fold(it.name); }));
+      var about = q.length >= 3 ? aboutList(type) : null;
       for (var i = 0; i < items.length && starts.length < limit; i++) {
         var n = names[i], at = n.indexOf(q);
         if (at === 0) starts.push(items[i]);
-        else if (at > 0 && contains.length < limit) contains.push(items[i]);
+        else if (at > 0) { if (contains.length < limit) contains.push(items[i]); }
+        else if (about && related.length < limit && about[i].indexOf('|' + q) >= 0) related.push(items[i]);
       }
-      return starts.concat(contains).slice(0, limit);
+      return starts.concat(contains, related).slice(0, limit);
+    },
+
+    // Library movies and series among TMDB credits (see Nova.artwork.person), most-voted first.
+    // Matched by name, and by year too when both sides have one, so a remake isn't taken for the original.
+    credited: function (titles) {
+      var self = this, out = [], seen = {};
+      ['movie', 'series'].forEach(function (type) {
+        if (folded['titles:' + type]) return;
+        var idx = folded['titles:' + type] = {};
+        self.lib[type].items.forEach(function (it) {
+          var k = Nova.artwork.titleKey(it.name);
+          if (k) (idx[k] = idx[k] || []).push(it);
+        });
+      });
+      titles.slice().sort(function (a, b) { return b.votes - a.votes; }).forEach(function (t) {
+        var idx = folded['titles:' + (t.tv ? 'series' : 'movie')], year = parseInt(t.year, 10);
+        t.names.forEach(function (n) {
+          (idx[Nova.artwork.titleKey(n)] || []).forEach(function (it) {
+            var y = parseInt(it.year, 10);
+            if (seen[it.type + it.id] || (y && year && Math.abs(y - year) > 1)) return;
+            seen[it.type + it.id] = 1;
+            out.push(it);
+          });
+        });
+      });
+      return out;
     }
   };
 })();

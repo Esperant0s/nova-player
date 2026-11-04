@@ -207,15 +207,15 @@
       return (memo[key] = out);
     },
 
-    // Titles like one particular title.
-    similar: function (item, n) {
-      var key = 'like:' + item.type + ':' + item.id;
+    // Titles like one particular title; `type` keeps them to movies or series.
+    similar: function (item, n, type) {
+      var key = 'like:' + (type || '') + ':' + item.type + ':' + item.id;
       if (memo[key]) return memo[key];
       var t = taste(), self = item.type + ':' + item.id, mine = {}, words = {}, scored = [];
       var hist = Nova.history._load()[self], rated = Nova.ratings._load()[self];
       features(item).concat((hist && hist.f) || [], (rated && rated.f) || []).forEach(function (x) { mine[x] = 1; });
       titleWords(item).forEach(function (w) { words[w] = 1; });
-      each(null, function (it) {
+      each(type, function (it) {
         var k = it.type + ':' + it.id;
         if (k === self || t.skip[k]) return;
         var f = features(it), s = 0, w = titleWords(it);
@@ -231,17 +231,19 @@
       return (memo[key] = diverse(scored, n || 30));
     },
 
-    // "Because you watched …" rows: the latest titles that were liked or watched through.
-    becauseRows: function (max) {
+    /* "Because you watched …" rows: the latest titles that were liked or watched through. With a
+       `type` (the Movies or Series tab), both the title they're based on and the suggestions are
+       of that type. */
+    becauseRows: function (max, type) {
       var hist = Nova.history._load(), rated = Nova.ratings._load(), seeds = [], k;
-      for (k in rated) if (rated[k].stars >= 4) seeds.push({ e: rated[k], verb: 'Liked' });
-      for (k in hist) if (!rated[k] && Nova.history.weight(hist[k]) >= 0.8) seeds.push({ e: hist[k], verb: 'Watched' });
+      for (k in rated) if (rated[k].stars >= 4 && (!type || rated[k].type === type)) seeds.push({ e: rated[k], verb: 'Liked' });
+      for (k in hist) if (!rated[k] && Nova.history.weight(hist[k]) >= 0.8 && (!type || hist[k].type === type)) seeds.push({ e: hist[k], verb: 'Watched' });
       seeds.sort(function (a, b) { return b.e.at - a.e.at; });
       var rows = [];
       for (var i = 0; i < seeds.length && rows.length < (max || 2); i++) {
         var it = Nova.api.get(seeds[i].e.type, seeds[i].e.id);
         if (!it) continue;
-        var items = this.similar(it);
+        var items = this.similar(it, 30, type);
         if (items.length >= 4) rows.push({ title: 'Because You ' + seeds[i].verb + ' ' + it.name, shape: 'portrait', items: items });
       }
       return rows;

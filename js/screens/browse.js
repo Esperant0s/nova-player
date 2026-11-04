@@ -127,8 +127,12 @@ Nova.router.register('browse', function (params) {
       rows.push({ title: 'Top Picks · ' + Nova.regions.label(chips.value), shape: 'portrait', items: Nova.recommend.picks(section, chips.value) });
       rows = rows.concat(Nova.regions.rows(section, chips.value));
     } else {
+      // Movies and Series only suggest their own kind.
+      var like = Nova.recommend.becauseRows(2, section);
       rows.push({ title: 'Top Picks for You', shape: 'portrait', items: Nova.recommend.picks(section) });
+      if (like[0]) rows.push(like[0]);
       rows.push({ title: 'Recently Added', shape: 'portrait', items: api.recent(section) });
+      if (like[1]) rows.push(like[1]);
       rows = rows.concat(catRows(section));
     }
     rows = rows.filter(function (r) { return r.items.length; });

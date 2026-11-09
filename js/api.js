@@ -407,6 +407,7 @@
       return Nova.cache.get(key).then(function (cached) {
         if (cached && cached.v === LIB_VERSION && !force) {
           self.setLib(cached.lib);
+          self.libAt = cached.at;
           if (Date.now() - cached.at > LIB_MAX_AGE) self.refresh();
           return self.lib;
         }
@@ -420,18 +421,36 @@
     },
 
     fetch: function () {
-      var self = this, key = this.cacheKey();
+      var self = this, key = this.cacheKey(), acct = this.account;
       return this.provider.library().then(function (lib) {
+        // Signed out or switched accounts while this was loading: it isn't this account's library.
+        if (self.account !== acct) throw new Error('The account changed.');
         self.setLib(lib);
-        Nova.cache.set(key, { v: LIB_VERSION, at: Date.now(), lib: lib });
+        self.libAt = Date.now();
+        Nova.cache.set(key, { v: LIB_VERSION, at: self.libAt, lib: lib });
         return lib;
+      });
+    },
+
+    /* The TV suspends the app instead of closing it, so it can go days without a restart. This
+       refreshes a library older than four hours, quietly: a failure (Wi-Fi not back yet) just
+       leaves the saved one in place until the next try. */
+    refreshIfStale: function () {
+      var self = this;
+      if (!this.lib || this.refreshing || Date.now() - (this.libAt || 0) < LIB_MAX_AGE) return;
+      this.refreshing = true;
+      this.fetch().then(function () { self.refreshing = false; Nova.bus.emit('library'); }, function () {
+        self.refreshing = false;
+        // Not again for a quarter of an hour.
+        self.libAt = Date.now() - LIB_MAX_AGE + 15 * 60000;
       });
     },
 
     // Resolves true when the library was updated, false when it failed but the saved one is still in use.
     refresh: function () {
-      var self = this;
+      var self = this, acct = this.account;
       return this.fetch().then(function () { Nova.bus.emit('library'); return true; }, function (e) {
+        if (self.account !== acct) return false;
         Nova.ui && Nova.ui.toast('Could not refresh the library: ' + e.message);
         if (!self.lib) throw e;
         return false;

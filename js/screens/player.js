@@ -690,6 +690,8 @@ Nova.router.register('player', function (params) {
 
   return {
     el: el,
+    // The idle screen may cover a movie or episode that is sitting paused (see js/idle.js).
+    idleOk: function () { return !live && state === 'paused' && scrub == null && engine.isPaused(); },
     destroy: function () {
       exiting = true;
       saveProgress();

@@ -1,20 +1,25 @@
 /* Idle screen: after a few minutes without a key press or mouse move, a slow slideshow of titles
    worth watching takes over the screen (what you were watching, My List, and Top Picks), each with
    its background art, year, rating and plot. OK opens the title on screen; any other key, a click
-   or moving the mouse returns to where you were. It never starts over the player or the sign-in
-   screen. Settings → Idle screen changes the wait or turns it off. */
+   or moving the mouse returns to where you were. Settings → Idle screen changes the wait or turns
+   it off.
+   It never starts over the sign-in screen, live TV or a playing video. A movie or episode left
+   paused gets it after ten minutes; there, every key just returns to the paused picture. */
 
 Nova.idle = (function () {
-  var SLIDE_MS = 12000, CHECK_MS = 5000, MAX_SLIDES = 30;
+  var SLIDE_MS = 12000, CHECK_MS = 5000, MAX_SLIDES = 30, PAUSED_MS = 10 * 60000;
   var el = null, bd = null, slides = [], at = 0, cur = null;
   var lastAct = Date.now(), shownAt = 0, slideTimer = null, token = 0;
 
   // Minutes of no input before it starts; 0 is off.
   function wait() { return Nova.prefs.get('idleMin', 3) * 60000; }
 
+  // The player says when it is sitting on a paused movie or episode.
+  function overPlayer() { var top = Nova.router.top(); return !!top && top.name === 'player'; }
+
   function blocked() {
     var top = Nova.router.top(), a = document.activeElement;
-    return !top || top.name === 'player' || top.name === 'login' || !Nova.api.lib || document.hidden ||
+    return !top || (top.name === 'player' && !(top.idleOk && top.idleOk())) || top.name === 'login' || !Nova.api.lib || document.hidden ||
       !!document.querySelector('.splash') || (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
   }
 
@@ -48,7 +53,8 @@ Nova.idle = (function () {
       '<div class="idle-bg"></div><div class="idle-shade"></div>' +
       '<div class="idle-logo login-logo"><b>N</b>NOVA</div><div class="idle-clock"></div>' +
       '<div class="idle-info"><div class="bb-kicker"></div><h1 class="bb-title"></h1><div class="bb-meta"></div><p class="bb-plot"></p></div>' +
-      '<div class="hints idle-hints"><span><b>OK</b> Open this title</span><span>Any other key to go back</span></div>');
+      '<div class="hints idle-hints">' + (overPlayer() ? '<span>Press any key to go back to what you were watching</span>'
+        : '<span><b>OK</b> Open this title</span><span>Any other key to go back</span>') + '</div>');
     bd = new Nova.Backdrop(el.querySelector('.idle-bg'));
     el.addEventListener('click', function () { hide(); });
   }
@@ -119,8 +125,8 @@ Nova.idle = (function () {
   function open() {
     var it = cur;
     hide();
-    // Behind a dialog or an open side menu, the title would open underneath it.
-    if (!it || Nova.ui.modals.length) return;
+    // Behind a dialog the title would open underneath it, and a paused video stays where it is.
+    if (!it || Nova.ui.modals.length || overPlayer()) return;
     if (Nova.menu.focused) Nova.menu.blur();
     Nova.router.push('details', { item: it });
   }
@@ -143,9 +149,10 @@ Nova.idle = (function () {
     });
     document.addEventListener('visibilitychange', function () { if (document.hidden) hide(); else lastAct = Date.now(); });
     setInterval(function () {
-      // Time in the player doesn't count as idling: the wait starts when it closes.
+      // Time spent watching doesn't count as idling: the wait starts when the video is paused or closed.
       if (blocked()) { lastAct = Date.now(); return; }
       var w = wait();
+      if (w && overPlayer()) w = PAUSED_MS;
       if (!el && w && Date.now() - lastAct >= w) show();
     }, CHECK_MS);
   }

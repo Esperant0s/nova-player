@@ -9,6 +9,14 @@ Nova.app = {
     Nova.keys.init(this.dispatch);
     this.initMouse();
     Nova.idle.init();
+    // Back from the TV's home screen, or left open for hours: bring in what the provider added
+    // meanwhile. Not during playback, where the requests would compete with the stream.
+    var stale = function () {
+      var top = Nova.router.top();
+      if (!document.hidden && top && top.name !== 'player' && top.name !== 'login') Nova.api.refreshIfStale();
+    };
+    document.addEventListener('visibilitychange', stale);
+    setInterval(stale, 10 * 60000);
 
     var acc = Nova.prefs.get('account', null);
     if (!acc) return Nova.router.root('login');

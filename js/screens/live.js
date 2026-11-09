@@ -169,6 +169,22 @@ Nova.router.register('live', function () {
   tick();
   var clock = setInterval(tick, 15000);
 
+  /* Rebuilds both lists from the current library and favourites, staying on the same category and
+     channel. Also runs when the library refreshes in the background, which replaces every channel. */
+  function reload() {
+    var cat = catList.current(), ch = chList.current(), idx = chList.index;
+    chips.setItems(Nova.regions.chips('live'));
+    cats = catsFor(chips.value);
+    var ci = 1;
+    cats.forEach(function (c, i) { if (cat && c.id === cat.id) ci = i; });
+    catList.setItems(cats, ci);
+    var items = cats[ci].items;
+    if (ch) items.forEach(function (c, i) { if (c.id === ch.id) idx = i; });
+    chList.setItems(items, idx);
+    showInfo();
+  }
+  Nova.bus.on('library', reload);
+
   mark();
   showInfo();
 
@@ -177,18 +193,9 @@ Nova.router.register('live', function () {
     menu: true,
     menuName: 'live',
     focusIn: function () { mark(); },
-    show: function (fresh) {
-      if (fresh) return;
-      // Favourites may have changed in the player.
-      var cur = catList.current().id, idx = chList.index;
-      cats = catsFor(chips.value);
-      var ci = 1;
-      cats.forEach(function (c, i) { if (c.id === cur) ci = i; });
-      catList.setItems(cats, ci);
-      chList.setItems(cats[ci].items, idx);
-      showInfo();
-    },
-    destroy: function () { clearInterval(clock); clearTimeout(epgTimer); pickCatSoon.cancel(); chips.applySoon.cancel(); },
+    // Favourites may have changed in the player.
+    show: function (fresh) { if (!fresh) reload(); },
+    destroy: function () { Nova.bus.off('library', reload); clearInterval(clock); clearTimeout(epgTimer); pickCatSoon.cancel(); chips.applySoon.cancel(); },
     onKey: function (act) {
       if (zone === 'chips') { chips.onKey(act); return; }
       // Up from the top of either list reaches the filter bar.

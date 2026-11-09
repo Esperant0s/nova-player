@@ -239,7 +239,12 @@
     v.addEventListener('seeked', function () { if (self.userPaused && !v.ended) self.emit('state', 'paused'); });
     v.addEventListener('timeupdate', function () { self.emit('time', self.time()); });
     v.addEventListener('ended', function () { self.emit('ended'); });
-    v.addEventListener('loadedmetadata', function () { self.emit('tracks'); });
+    v.addEventListener('loadedmetadata', function () {
+      self.loaded = true;
+      // Start where open() or an early seek() asked (hls.js is usually there already).
+      if (!self.remux && self.startAt > 0 && Math.abs(v.currentTime - self.startAt) > 1) v.currentTime = self.startAt;
+      self.emit('tracks');
+    });
     v.addEventListener('error', function () {
       if (!v.getAttribute('src') && !self.hls) return;
       var err = v.error;
@@ -262,6 +267,11 @@
     var self = this, v = this.video, tk = ++this.token;
     this.close(true);
     this.userPaused = false;
+    // Until the stream has loaded, the video element still reports the last stream's position (or 0);
+    // time() answers with where this one is headed, so a reconnect or a tab switch during loading
+    // resumes there instead of starting over.
+    this.startAt = opts.startAt > 0 ? opts.startAt : 0;
+    this.loaded = false;
     this.emit('state', 'buffering');
     var isHls = /\.m3u8(\?|$)/i.test(url) || /\/live\//.test(url) && !/\.ts(\?|$)/i.test(url);
     var native = !!v.canPlayType('application/vnd.apple.mpegurl');
@@ -280,10 +290,6 @@
     }
     var plain = function () {
       v.src = Nova.useProxy && isHls ? '/proxy?url=' + encodeURIComponent(url) : url;
-      if (opts.startAt > 0) {
-        var once = function () { v.removeEventListener('loadedmetadata', once); v.currentTime = opts.startAt; };
-        v.addEventListener('loadedmetadata', once);
-      }
       if (!self.userPaused) self.play();
     };
     // hls.js is preferred even where HLS plays natively: it exposes audio, subtitle and quality tracks.
@@ -337,13 +343,22 @@
   HtmlEngine.prototype.seek = function (sec) {
     if (this.thumbs) this.thumbs.release();
     var r = this.remux;
-    if (!r) { this.video.currentTime = sec; return; }
+    if (!r) {
+      // Before the stream has loaded there is nothing to seek in; it will start there instead.
+      if (this.loaded) this.video.currentTime = sec; else this.startAt = sec;
+      return;
+    }
+    this.loaded = false;
     // A repackaged stream can't jump, so seeking restarts it from the new position.
     r.offset = Math.max(0, r.dur ? Math.min(sec, r.dur - 1) : sec);
     this.video.src = '/remux?t=' + Math.floor(r.offset) + '&url=' + encodeURIComponent(r.url);
     if (!this.userPaused) this.play();
   };
-  HtmlEngine.prototype.time = function () { return (this.remux ? this.remux.offset : 0) + (this.video.currentTime || 0); };
+  HtmlEngine.prototype.time = function () {
+    var t = this.loaded ? this.video.currentTime || 0 : 0;
+    if (this.remux) return this.remux.offset + t;
+    return this.loaded ? t : this.startAt;
+  };
   HtmlEngine.prototype.duration = function () {
     if (this.remux) return this.remux.dur;
     var d = this.video.duration; return isFinite(d) ? d : 0;

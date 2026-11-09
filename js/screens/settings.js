@@ -18,6 +18,7 @@ Nova.router.register('settings', function () {
   var LIVE_FMT = [['auto', 'Automatic'], ['ts', 'MPEG-TS'], ['m3u8', 'HLS']];
   var SUB_SIZE = [['m', 'Medium'], ['l', 'Large'], ['xl', 'Extra large'], ['s', 'Small']];
   var ON_OFF = [[true, 'On'], [false, 'Off']];
+  var IDLE = [[3, 'After 3 minutes'], [5, 'After 5 minutes'], [10, 'After 10 minutes'], [0, 'Off'], [1, 'After 1 minute']];
 
   function items() {
     var a = Nova.api.account, info = a.info || {};
@@ -33,6 +34,7 @@ Nova.router.register('settings', function () {
       { icon: 'subtitles', label: 'Subtitle size', value: label('subSize', SUB_SIZE, 'm'), fn: function () { cycle('subSize', SUB_SIZE, 'm')(); Nova.applySubSize(); } },
       { icon: 'movie', label: 'Background art', value: Nova.artwork.enabled() ? 'TMDB' : 'Off',
         sub: 'Wide pictures from TMDB for titles your provider has none for', fn: artworkKey },
+      { icon: 'series', label: 'Idle screen', value: label('idleMin', IDLE, 3), sub: 'A slideshow of suggested titles when the remote is left alone', fn: cycle('idleMin', IDLE, 3) },
       { icon: 'next', label: 'Auto-play next episode', value: label('autoNext', ON_OFF, true), fn: cycle('autoNext', ON_OFF, true) },
       { icon: 'trash', label: 'Clear watch history', value: 'Empties Continue Watching', fn: function () {
         Nova.ui.dialog({ title: 'Clear watch history?', text: 'Continue Watching, resume points and the history behind your suggestions will be removed. Your ratings stay.', buttons: [

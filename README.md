@@ -13,6 +13,7 @@ A Netflix-style IPTV player for Samsung smart TVs (Tizen). Supports Xtream Codes
   - Suggestions match on category, region, genre, cast, director and decade. A title counts once you've watched about two minutes of it (or half of a short clip). Finished titles, loved ones and titles with many episodes watched count most. Recent ones count more than old ones, and My List counts a little. 1–2 star ratings push similar titles down. Watched and rated titles aren't suggested again.
   - Movie lists from Xtream don't include genres, so movie suggestions mostly match on category and region until you open titles' pages.
   - Everything stays on the TV. Settings has **Clear watch history** (also clears the history behind suggestions) and **Clear ratings**.
+- **Idle screen** ([js/idle.js](js/idle.js)): leave the remote alone for three minutes and a slow slideshow takes over, showing titles you were watching, titles from My List and your Top Picks, each with its background art, rating and plot. OK opens the title on screen; any other key returns to where you were. It never starts during playback. **Settings → Idle screen** changes the wait (1, 3, 5 or 10 minutes) or turns it off.
 - **Fast**: your library is cached on the TV, so the app opens instantly and refreshes in the background. Only the cards on screen are drawn, so a 50,000-title catalogue scrolls as smoothly as a small one.
 - **Player**:
   - Movies and series: left/right pauses and scrubs Netflix-style, with a preview of the frame at the chosen spot above the bar (hold to go faster: steps grow from 10 s to 30 s to 60 s). OK or Play plays from there, Back returns to where you were. The paused picture itself moves to the spot. In a browser, accounts that allow more than one connection (and the demo) also get a thumbnail. It needs a second connection to the stream, which would cut off the movie on one-connection accounts. The TV never shows thumbnails, because it has only one video decoder. Also ±10 s skip buttons, resume where you left off, a next-episode countdown with auto-play, and an "Ends at" time.
@@ -110,6 +111,7 @@ css/app.css          All styling (1920×1080)
 js/util.js           Helpers, icons, HTTP
 js/store.js          Settings, library cache (IndexedDB), watch progress, favourites
 js/recommend.js      Watch history, ratings and suggestions
+js/idle.js           Idle screen: a slideshow of suggested titles
 js/artwork.js        Background art from TMDB
 js/api.js            Xtream Codes, M3U and demo providers behind one interface
 js/keys.js           Remote and keyboard mapping

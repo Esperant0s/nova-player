@@ -8,6 +8,7 @@ Nova.app = {
     Nova.applySubSize();
     Nova.keys.init(this.dispatch);
     this.initMouse();
+    Nova.idle.init();
 
     var acc = Nova.prefs.get('account', null);
     if (!acc) return Nova.router.root('login');

@@ -374,6 +374,10 @@ Nova.ui = {
 
   toast: function (text, ms) {
     var el = Nova.el('div', 'toast', Nova.esc(text));
+    // A new message replaces the one on screen instead of being drawn on top of it.
+    var old = this._toast;
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    this._toast = el;
     document.getElementById('overlay').appendChild(el);
     setTimeout(function () { el.classList.add('show'); }, 20);
     setTimeout(function () {

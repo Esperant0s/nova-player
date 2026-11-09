@@ -348,7 +348,7 @@ body:not(.playing) #video-layer { visibility: hidden; }
 
 .page-title { position: absolute; left: 160px; top: 54px; font-size: 46px; font-weight: 800; }
 .set-list { position: absolute; left: 160px; top: 150px; width: 1240px; }
-.set-item { height: 84px; margin-bottom: 8px; padding: 0 32px; border-radius: 12px; background: rgba(255,255,255,0.05); display: flex; align-items: center; }
+.set-item { height: 76px; margin-bottom: 6px; padding: 0 32px; border-radius: 12px; background: rgba(255,255,255,0.05); display: flex; align-items: center; }
 .set-item .ico { font-size: 36px; margin-right: 28px; color: var(--muted); }
 .set-text { flex: 1; }
 .set-text b { display: block; font-size: 28px; }
@@ -529,3 +529,28 @@ body[data-sub="xl"] .p-subs span { font-size: 68px; }
 
 .p-stats { position: absolute; top: 36px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 8px; background: rgba(0,0,0,0.75); font-size: 22px; font-weight: 600; white-space: nowrap; display: none; }
 .p-stats.show { display: block; }
+
+/* ---------- Idle screen ---------- */
+
+.idle { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 20; background: #000; opacity: 0; transition: opacity 0.4s ease; cursor: pointer; }
+.idle.on { opacity: 1; }
+.idle-bg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.idle-bg .bd-layer { transition: opacity 1.2s ease; }
+/* A slow drift, so the picture is never still. */
+.idle-bg .bd-wide .bd-main { animation: idle-drift 14s ease-out both; }
+@keyframes idle-drift { from { transform: scale(1); } to { transform: scale(1.08); } }
+.idle-bg .bd-poster .bd-main { right: 230px; top: 170px; width: 480px; height: 720px; }
+.idle-shade {
+  position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,0.85) 0, rgba(0,0,0,0.45) 40%, rgba(0,0,0,0) 70%),
+    linear-gradient(0deg, rgba(0,0,0,0.85) 0, rgba(0,0,0,0) 45%),
+    linear-gradient(180deg, rgba(0,0,0,0.5) 0, rgba(0,0,0,0) 20%);
+}
+.idle-logo { position: absolute; left: 100px; top: 64px; font-size: 34px; letter-spacing: 5px; }
+.idle-logo b { width: 52px; height: 52px; margin-right: 16px; border-radius: 12px; font-size: 32px; }
+.idle-clock { position: absolute; right: 100px; top: 70px; font-size: 38px; font-weight: 700; }
+.idle-info { position: absolute; left: 100px; bottom: 150px; width: 980px; opacity: 0; transform: translateY(16px); transition: opacity 0.45s ease, transform 0.45s var(--ease); }
+.idle-info.on { opacity: 1; transform: none; }
+.idle-info .bb-plot { -webkit-line-clamp: 3; }
+.idle-hints { left: 100px; bottom: 60px; }

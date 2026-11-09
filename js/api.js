@@ -495,8 +495,11 @@
 
     streamUrl: function (item, ep) { return this.provider.streamUrl(item, ep); },
 
+    // Sorted once per library: Home, Movies, Series and Search all ask, and again on every refresh.
     recent: function (type, n) {
-      return this.lib[type].items.slice().sort(function (a, b) { return b.added - a.added; }).slice(0, n || 40);
+      var k = 'recent:' + type;
+      if (!folded[k]) folded[k] = this.lib[type].items.slice().sort(function (a, b) { return b.added - a.added; }).slice(0, 60);
+      return folded[k].slice(0, n || 40);
     },
 
     // Titles whose name starts with the query, then names containing it, then titles matching by
